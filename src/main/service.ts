@@ -136,13 +136,57 @@ app.post('/api/test/inject-email', async (req, res) => {
     if (aiService) {
       addConsoleLog('warn', '[SIMULATION] IMAP monitor offline. Executing AI classification dry run.');
       const result = await aiService.classifyEmail(sender, subject, body);
+      
+      const mailLog: MailLog = {
+        id: Math.random().toString(36).substring(7),
+        timestamp: new Date().toLocaleTimeString(),
+        sender,
+        subject,
+        summary: result.summary,
+        category: result.category,
+        urgency: result.urgency,
+        notified: false,
+      };
+      emailLogs.push(mailLog);
+      broadcast({ type: 'email', email: mailLog });
+
       res.json({ 
         success: true, 
         message: 'Processed dry run email classification (IMAP not online).',
         classification: result 
       });
     } else {
-      res.status(400).json({ error: 'Active services not initialized. Set configuration first.' });
+      // Local fallback mock classifier if no configuration is present (for instant UI/E2E demo)
+      addConsoleLog('warn', '[SIMULATION] No active configuration. Running local mock rule-based classifier.');
+      
+      const isPriority = subject.toLowerCase().includes('interview') || subject.toLowerCase().includes('schedule');
+      const category: 'Interview' | 'Job Offer' | 'Reject' | 'Spam' | 'General' = isPriority ? 'Interview' 
+                     : (subject.toLowerCase().includes('rejection') || body.toLowerCase().includes('proceed with another')) ? 'Reject'
+                     : (subject.toLowerCase().includes('offer') || body.toLowerCase().includes('job offer')) ? 'Job Offer'
+                     : (subject.toLowerCase().includes('discount') || subject.toLowerCase().includes('promo')) ? 'Spam'
+                     : 'General';
+      const urgency: 'low' | 'medium' | 'high' = isPriority ? 'high' : 'low';
+      const summary = `[Local Demo Mock] Analyzed email from ${sender}. Summary: Found job related request. Category determined as ${category}.`;
+
+      const result = { isPriority, category, urgency, summary };
+      const mailLog: MailLog = {
+        id: Math.random().toString(36).substring(7),
+        timestamp: new Date().toLocaleTimeString(),
+        sender,
+        subject,
+        summary: result.summary,
+        category: result.category,
+        urgency: result.urgency,
+        notified: false,
+      };
+      emailLogs.push(mailLog);
+      broadcast({ type: 'email', email: mailLog });
+
+      res.json({ 
+        success: true, 
+        message: 'Mock email classified using local rule-based engine (Daemon not configured).',
+        classification: result 
+      });
     }
   }
 });
