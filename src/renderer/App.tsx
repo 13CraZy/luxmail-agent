@@ -592,6 +592,179 @@ export default function App() {
     }
   };
 
+  // Helper to parse and render styled texts (handles bold and clickable truncated links)
+  const renderTextWithLinksAndBold = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        const displayUrl = part.length > 40 ? part.substring(0, 37) + '...' : part;
+        return (
+          <a 
+            key={i} 
+            href="#" 
+            onClick={(e) => {
+              e.preventDefault();
+              fetch(`${apiBase}/api/open-link`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: part }),
+              }).catch(err => console.error(err));
+            }}
+            className="text-accent-purple hover:underline font-mono text-[10px] break-all inline-block max-w-full"
+          >
+            {displayUrl}
+          </a>
+        );
+      }
+      
+      const boldParts = part.split(/\*\*([^*]+)\*\*/g);
+      return boldParts.map((bPart, j) => {
+        if (j % 2 === 1) {
+          return <strong key={j} className="font-semibold text-white">{bPart}</strong>;
+        }
+        return bPart;
+      });
+    });
+  };
+
+  // Helper to render beautiful email cards for local fallback responses
+  const renderEmailCard = (card: { title: string; sender?: string; date?: string; summary?: string }, index: number) => {
+    const formattedDate = card.date ? new Date(card.date).toLocaleString() : '';
+    
+    const isLinkedIn = card.sender?.toLowerCase().includes('linkedin') || card.title.toLowerCase().includes('linkedin');
+    const isIndeed = card.sender?.toLowerCase().includes('indeed') || card.title.toLowerCase().includes('indeed');
+    
+    return (
+      <div key={index} className="p-4.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700/80 transition-all duration-200 shadow-lg flex flex-col gap-3 w-full max-w-full overflow-hidden">
+        <div className="flex items-start justify-between gap-3 w-full max-w-full">
+          <h4 className="text-xs font-bold text-white leading-tight break-words flex-1 min-w-0 pr-1">
+            {card.title}
+          </h4>
+          <span className={`text-[8px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider shrink-0 select-none ${
+            isLinkedIn ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+            isIndeed ? 'bg-indigo-600/15 text-indigo-300 border border-indigo-500/25' :
+            'bg-zinc-900 text-zinc-400 border border-zinc-800'
+          }`}>
+            {isLinkedIn ? 'LinkedIn' : isIndeed ? 'Indeed' : 'Email'}
+          </span>
+        </div>
+        
+        <div className="flex flex-col gap-1 text-[10px] text-zinc-400 w-full max-w-full overflow-hidden">
+          {card.sender && (
+            <div className="flex items-baseline gap-1.5 w-full max-w-full overflow-hidden">
+              <span className="text-zinc-500 font-mono text-[9px] uppercase tracking-wider select-none shrink-0">De:</span>
+              <span className="text-zinc-300 truncate break-all min-w-0 flex-1">{card.sender}</span>
+            </div>
+          )}
+          {card.date && (
+            <div className="flex items-baseline gap-1.5 w-full max-w-full overflow-hidden">
+              <span className="text-zinc-500 font-mono text-[9px] uppercase tracking-wider select-none shrink-0">Fecha:</span>
+              <span className="text-zinc-300 truncate flex-1">{formattedDate || card.date}</span>
+            </div>
+          )}
+        </div>
+
+        {card.summary && (
+          <div className="pt-2.5 border-t border-zinc-900 text-[11px] text-zinc-300 leading-relaxed break-words w-full max-w-full bg-[#030305]/60 p-3 rounded-xl border border-zinc-900/60 font-sans">
+            {renderTextWithLinksAndBold(card.summary)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Main custom rendering engine for agent message bubble texts
+  const renderMessageText = (text: string) => {
+    // If the text does not contain headers (e.g., local fallback style), render normal paragraphs
+    if (!text.includes('### ')) {
+      return (
+        <div className="flex flex-col gap-2 max-w-full overflow-hidden">
+          {text.split('\n').map((paragraph, index) => {
+            const trimmed = paragraph.trim();
+            if (!trimmed) return null;
+            return (
+              <p key={index} className="text-neutral-200 leading-relaxed text-xs break-words max-w-full">
+                {renderTextWithLinksAndBold(trimmed)}
+              </p>
+            );
+          })}
+        </div>
+      );
+    }
+
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    
+    let currentCard: { title: string; sender?: string; date?: string; summary?: string } | null = null;
+    let inCardSection = false;
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      // Card Header detection: "### 1. Title"
+      const headingMatch = trimmed.match(/^###\s+(?:\d+\.\s+)?(.*)/);
+      if (headingMatch) {
+        if (currentCard) {
+          elements.push(renderEmailCard(currentCard, index));
+        }
+        currentCard = { title: headingMatch[1] };
+        inCardSection = true;
+        return;
+      }
+
+      if (inCardSection && currentCard) {
+        // De / From
+        const deMatch = trimmed.match(/^\*\s+\*\*(?:De|From):\*\*\s*(.*)/i);
+        if (deMatch) {
+          currentCard.sender = deMatch[1];
+          return;
+        }
+        // Fecha / Date
+        const fechaMatch = trimmed.match(/^\*\s+\*\*(?:Fecha|Date):\*\*\s*(.*)/i);
+        if (fechaMatch) {
+          currentCard.date = fechaMatch[1];
+          return;
+        }
+        // Resumen / Summary
+        const resumenMatch = trimmed.match(/^\*\s+\*\*(?:Resumen|Summary):\*\*\s*(.*)/i);
+        if (resumenMatch) {
+          currentCard.summary = resumenMatch[1];
+          return;
+        }
+      }
+
+      // If it's a general instruction line (e.g. before the first card starts)
+      if (!inCardSection) {
+        if (trimmed.startsWith('⚠️')) {
+          const cleanAlert = trimmed.replace(/^⚠️\s*/, '').replace(/\*\*/g, '');
+          elements.push(
+            <div key={index} className="p-3.5 mb-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-300 font-medium flex items-start gap-2.5 w-full max-w-full overflow-hidden">
+              <span className="shrink-0 select-none">⚠️</span>
+              <div className="flex-1 min-w-0 break-words leading-relaxed text-xs">
+                {renderTextWithLinksAndBold(cleanAlert)}
+              </div>
+            </div>
+          );
+        } else {
+          elements.push(
+            <p key={index} className="mb-2 text-zinc-300 text-xs break-words w-full max-w-full">
+              {renderTextWithLinksAndBold(trimmed)}
+            </p>
+          );
+        }
+      }
+    });
+
+    if (currentCard) {
+      elements.push(renderEmailCard(currentCard, lines.length));
+    }
+
+    return <div className="flex flex-col gap-4 w-full max-w-full overflow-hidden">{elements}</div>;
+  };
+
   const isConfigValid = 
     imapHost.trim() !== '' && 
     imapPort > 0 && 
@@ -1175,20 +1348,23 @@ export default function App() {
                           bubbleShadow = 'shadow-[0_0_12px_rgba(223,184,108,0.08)]';
                         }
                       }
-
                       return (
                         <div
                           key={idx}
-                          className={`flex flex-col max-w-[85%] ${msg.sender === 'user' ? 'self-end items-end' : 'self-start items-start'}`}
+                          className={`flex flex-col ${msg.sender === 'user' ? 'max-w-[85%] self-end items-end' : 'max-w-[95%] sm:max-w-[85%] w-full self-start items-start'}`}
                         >
                           <div
-                            className={`p-3.5 rounded-3xl text-xs leading-relaxed break-words select-text ${
+                            className={`p-3.5 rounded-3xl text-xs leading-relaxed break-words select-text w-full ${
                               msg.sender === 'user'
                                 ? 'bg-gradient-to-br from-accent-purple to-accent-purple/80 text-white rounded-br-none shadow-[0_4px_12px_rgba(139,92,246,0.15)]'
-                                : `bg-zinc-900/30 border ${bubbleBorder} ${bubbleShadow} text-neutral-200 rounded-bl-none`
+                                : `bg-zinc-900/20 border ${bubbleBorder} ${bubbleShadow} text-neutral-200 rounded-bl-none overflow-hidden max-w-full`
                             }`}
                           >
-                            <p className="whitespace-pre-wrap">{msg.text}</p>
+                            {msg.sender === 'user' ? (
+                              <p className="whitespace-pre-wrap">{msg.text}</p>
+                            ) : (
+                              renderMessageText(msg.text)
+                            )}
                           </div>
                           <span className="text-[8px] text-zinc-500 font-mono mt-1 px-1.5 select-none">{msg.timestamp}</span>
                         </div>
