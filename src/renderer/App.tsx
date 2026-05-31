@@ -57,6 +57,8 @@ const translations = {
     waBadge: 'WA',
     aiBadge: 'AI',
     loading: 'Loading configuration...',
+    waLogoutBtn: 'Disconnect WhatsApp Session',
+    waLoggingOut: 'Disconnecting...',
     chatTab: 'AI Assistant',
     inboxTab: 'Inbox Tracker',
     chatTitle: 'LUXMAIL AI ASSISTANT',
@@ -130,6 +132,8 @@ const translations = {
     waBadge: 'WA',
     aiBadge: 'IA',
     loading: 'Cargando configuración...',
+    waLogoutBtn: 'Desvincular Sesión WhatsApp',
+    waLoggingOut: 'Desvinculando...',
     chatTab: 'Asistente de IA',
     inboxTab: 'Buzón Clasificado',
     chatTitle: 'ASISTENTE DE IA LUXMAIL',
@@ -169,6 +173,7 @@ export default function App() {
   const [notificationPhone, setNotificationPhone] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSavedCheck, setShowSavedCheck] = useState(false);
+  const [isLoggingOutWa, setIsLoggingOutWa] = useState(false);
   
   // System & Connection State
   const [status, setStatus] = useState<SystemStatus>({
@@ -393,6 +398,28 @@ export default function App() {
       addConsoleLog('error', `Failed to deliver configuration: ${(err as Error).message}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleLogoutWhatsapp = async () => {
+    if (isLoggingOutWa) return;
+    setIsLoggingOutWa(true);
+    addLog('info', language === 'es' ? 'Desvinculando WhatsApp y eliminando sesión...' : 'Unlinking WhatsApp and clearing session files...');
+    try {
+      const response = await fetch(`${apiBase}/api/whatsapp/logout`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        addLog('success', language === 'es' ? 'Sesión de WhatsApp cerrada exitosamente.' : 'WhatsApp session logged out and cleared.');
+        setQrCode(null);
+      } else {
+        const data = await response.json();
+        addLog('error', `Failed to log out: ${data.error}`);
+      }
+    } catch (err) {
+      addLog('error', `Network error during WhatsApp logout: ${(err as Error).message}`);
+    } finally {
+      setIsLoggingOutWa(false);
     }
   };
 
@@ -783,6 +810,23 @@ export default function App() {
                 <p className="text-[9px] text-zinc-500 leading-relaxed">
                   {t('waInfo')}
                 </p>
+
+                {(status.whatsappConnected || qrCode) && (
+                  <button
+                    onClick={handleLogoutWhatsapp}
+                    disabled={isLoggingOutWa}
+                    className="w-full py-2 mt-1 bg-rose-500/10 hover:bg-rose-500/20 active:scale-95 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1.5 select-none"
+                  >
+                    {isLoggingOutWa ? (
+                      <>
+                        <RefreshCw size={10} className="animate-spin" />
+                        <span>{t('waLoggingOut')}</span>
+                      </>
+                    ) : (
+                      <span>{t('waLogoutBtn')}</span>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Running Status Metadata */}

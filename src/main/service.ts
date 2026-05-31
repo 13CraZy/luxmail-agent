@@ -163,6 +163,42 @@ app.get('/api/logs', (_req, res) => {
   res.json({ emails: emailLogs, console: consoleLogs });
 });
 
+app.post('/api/whatsapp/logout', async (req, res) => {
+  addConsoleLog('info', 'Request received to log out WhatsApp session.');
+  try {
+    if (whatsappService) {
+      await whatsappService.logout();
+      whatsappService = null;
+      activeQr = null;
+      broadcast({ type: 'qr', qr: null });
+      broadcast({ type: 'status', status: getSystemStatus() });
+      addConsoleLog('success', 'WhatsApp session successfully logged out and cleared.');
+      
+      // Re-initialize WhatsApp engine to obtain a fresh QR code
+      if (config?.whatsappEnabled) {
+        const absoluteAuthPath = path.resolve(DATA_DIR, 'auth');
+        whatsappService = new WhatsappService(absoluteAuthPath);
+        whatsappService.onQr((qr) => {
+          activeQr = qr;
+          broadcast({ type: 'qr', qr });
+        });
+        whatsappService.onReady(() => {
+          activeQr = null;
+          addConsoleLog('success', 'WhatsApp Engine ready and linked.');
+          broadcast({ type: 'status', status: getSystemStatus() });
+        });
+        whatsappService.initialize();
+      }
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: 'WhatsApp service is not active.' });
+    }
+  } catch (err) {
+    addConsoleLog('error', `Failed to log out WhatsApp: ${(err as Error).message}`);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/chat', async (req, res) => {
   const { message } = req.body;
   if (!message) {

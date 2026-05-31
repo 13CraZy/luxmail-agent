@@ -1,5 +1,7 @@
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
+import fs from 'fs';
+import path from 'path';
 
 export class WhatsappService {
   private client: Client | null = null;
@@ -87,6 +89,27 @@ export class WhatsappService {
 
   public getStatus(): boolean {
     return this.isReady;
+  }
+
+  public async logout(): Promise<void> {
+    if (this.client) {
+      try {
+        await this.client.logout();
+      } catch (err) {
+        console.error('Error logging out WhatsApp client:', err);
+      }
+      await this.destroy();
+    }
+
+    const sessionPath = path.resolve(this.dataPath || './data/auth', 'session');
+    if (fs.existsSync(sessionPath)) {
+      try {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log('[SUCCESS] WhatsApp session folder removed.');
+      } catch (err) {
+        console.error('Failed to remove WhatsApp session directory:', err);
+      }
+    }
   }
 
   public async destroy(): Promise<void> {
