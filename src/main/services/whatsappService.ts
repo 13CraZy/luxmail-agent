@@ -76,14 +76,52 @@ export class WhatsappService {
       throw new Error('WhatsApp Service is not ready to send messages.');
     }
 
-    // Format phone number to WhatsApp format (e.g. 5211234567890@c.us)
-    let formattedNumber = toPhoneNumber.replace(/\D/g, '');
+    // Extract digits only
+    let clean = toPhoneNumber.replace(/\D/g, '');
     
-    // Append '@c.us' suffix for standard WhatsApp user chats
+    // If it has 10 digits (Mexican number without country code), try resolving with 521 and 52 prefix
+    if (clean.length === 10) {
+      try {
+        const id1 = await this.client.getNumberId(`521${clean}`);
+        if (id1) {
+          await this.client.sendMessage(id1._serialized, message);
+          return;
+        }
+      } catch (e) {
+        console.error('Error resolving candidate 521:', e);
+      }
+
+      try {
+        const id2 = await this.client.getNumberId(`52${clean}`);
+        if (id2) {
+          await this.client.sendMessage(id2._serialized, message);
+          return;
+        }
+      } catch (e) {
+        console.error('Error resolving candidate 52:', e);
+      }
+
+      // Default fallback for 10-digit MX numbers
+      await this.client.sendMessage(`52${clean}@c.us`, message);
+      return;
+    }
+
+    // General resolution for other numbers
+    try {
+      const numberId = await this.client.getNumberId(clean);
+      if (numberId) {
+        await this.client.sendMessage(numberId._serialized, message);
+        return;
+      }
+    } catch (e) {
+      console.error('Error resolving general number:', e);
+    }
+
+    // Direct fallback
+    let formattedNumber = clean;
     if (!formattedNumber.endsWith('@c.us')) {
       formattedNumber = `${formattedNumber}@c.us`;
     }
-
     await this.client.sendMessage(formattedNumber, message);
   }
 
