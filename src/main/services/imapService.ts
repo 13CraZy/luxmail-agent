@@ -12,8 +12,18 @@ export class ImapService {
     this.onNewEmailCallback = callback;
   }
 
+  public getStatus(): boolean {
+    return this.isConnected;
+  }
+
   public async connect(): Promise<void> {
     if (this.isConnected) return;
+
+    let finalPassword = this.config.passwordHex.trim();
+    // If it is a 16-character Google App Password (often displayed with spaces), strip all spaces
+    if (finalPassword.replace(/\s+/g, '').length === 16) {
+      finalPassword = finalPassword.replace(/\s+/g, '');
+    }
 
     this.client = new ImapFlow({
       host: this.config.host,
@@ -21,7 +31,7 @@ export class ImapService {
       secure: this.config.secure,
       auth: {
         user: this.config.user,
-        pass: this.config.passwordHex, // Stored locally as the App Password
+        pass: finalPassword,
       },
       logger: false, // Suppress verbose library logs
     });

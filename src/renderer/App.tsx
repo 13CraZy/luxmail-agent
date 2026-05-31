@@ -207,6 +207,9 @@ export default function App() {
           setLogs(prev => [...prev, data.log]);
         } else if (data.type === 'email') {
           setEmails(prev => [data.email, ...prev]);
+        } else if (data.type === 'clear') {
+          setEmails([]);
+          setLogs([]);
         }
       } catch (err) {
         console.error('Error parsing WebSocket message:', err);

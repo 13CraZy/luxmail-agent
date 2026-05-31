@@ -110,7 +110,7 @@ function addConsoleLog(level: ConsoleLog['level'], message: string) {
 
 function getSystemStatus(): SystemStatus {
   return {
-    imapConnected: imapService !== null,
+    imapConnected: imapService?.getStatus() || false,
     whatsappConnected: whatsappService?.getStatus() || false,
     aiConnected: aiService !== null,
   };
@@ -237,6 +237,11 @@ app.post('/api/test/inject-email', async (req, res) => {
 });
 
 async function restartServices() {
+  // Clear logs history on service restart to keep UI and logs aligned
+  emailLogs.length = 0;
+  consoleLogs.length = 0;
+  broadcast({ type: 'clear' });
+
   addConsoleLog('info', 'Initializing LuxMail Agent background pipelines...');
 
   // 1. Disconnect any existing IMAP instances
