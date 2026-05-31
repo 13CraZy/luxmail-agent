@@ -224,6 +224,12 @@ export default function App() {
   const [emails, setEmails] = useState<MailLog[]>([]);
   const [activeTab, setActiveTab] = useState<'status' | 'settings'>('status');
 
+  // Splash screen state
+  const [isAppReady, setIsAppReady] = useState(false);
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
+  const [isSplashExiting, setIsSplashExiting] = useState(false);
+  const splashStartTime = useRef(Date.now());
+
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   // Chat State
@@ -380,6 +386,11 @@ export default function App() {
 
     socket.onopen = () => {
       addLog('success', 'Connected to local Agent daemon via WebSocket.');
+      // Dismiss splash after a minimum 1.8s display for premium feel
+      const elapsed = Date.now() - splashStartTime.current;
+      const minSplashMs = 1800;
+      const remaining = Math.max(0, minSplashMs - elapsed);
+      setTimeout(() => setIsAppReady(true), remaining);
     };
 
     socket.onclose = () => {
@@ -391,6 +402,16 @@ export default function App() {
       socket.close();
     };
   }, []);
+
+  // Handle splash exit animation lifecycle
+  useEffect(() => {
+    if (isAppReady && !isSplashExiting) {
+      setIsSplashExiting(true);
+      // Remove splash from DOM after exit animation (600ms)
+      const timer = setTimeout(() => setIsSplashVisible(false), 650);
+      return () => clearTimeout(timer);
+    }
+  }, [isAppReady]);
 
   const addLog = (level: ConsoleLog['level'], message: string) => {
     setLogs(prev => [...prev, {
@@ -579,7 +600,39 @@ export default function App() {
     (aiProvider === 'ollama' ? ollamaEndpoint.trim() !== '' : aiKey.trim() !== '');
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-background text-white font-sans overflow-hidden">
+    <>
+      {/* ============ PREMIUM SPLASH SCREEN ============ */}
+      {isSplashVisible && (
+        <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-background ${isSplashExiting ? 'splash-exit' : ''}`}>
+          {/* Orbital spinner ring */}
+          <div className="relative flex items-center justify-center mb-8">
+            {/* Outer rotating ring */}
+            <div className="absolute w-24 h-24 rounded-full splash-orbit-ring" style={{
+              border: '2px solid transparent',
+              borderTopColor: 'rgba(168, 85, 247, 0.6)',
+              borderRightColor: 'rgba(245, 158, 11, 0.3)',
+            }} />
+            {/* Inner counter-rotating ring */}
+            <div className="absolute w-16 h-16 rounded-full" style={{
+              border: '1.5px solid transparent',
+              borderBottomColor: 'rgba(245, 158, 11, 0.5)',
+              borderLeftColor: 'rgba(168, 85, 247, 0.2)',
+              animation: 'splash-orbit 1.8s linear infinite reverse',
+            }} />
+            {/* Center logo */}
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent-purple to-accent-amber flex items-center justify-center font-bold text-base select-none text-black splash-logo-glow">
+              LM
+            </div>
+          </div>
+          {/* Title */}
+          <h1 className="text-lg font-bold tracking-tight select-none mb-1">luxmail<span className="text-accent-amber">.</span>agent</h1>
+          {/* Subtitle with floating animation */}
+          <p className="text-[11px] text-zinc-500 tracking-widest uppercase select-none splash-subtitle">Initializing secure pipeline...</p>
+        </div>
+      )}
+
+      {/* ============ MAIN APPLICATION ============ */}
+    <div className={`h-screen w-screen flex flex-col bg-background text-white font-sans overflow-hidden ${isAppReady ? 'app-reveal' : (isSplashVisible ? 'opacity-0' : '')}`}>
       {/* 1. Header (Apple-like Navigation) */}
       <header className="h-auto md:h-16 py-4 md:py-0 shrink-0 border-b border-card-border px-6 flex flex-col md:flex-row justify-between items-center bg-[rgba(3,3,5,0.8)] backdrop-blur-md z-20 gap-3 md:gap-0">
         <div className="flex items-center gap-2.5">
@@ -1367,5 +1420,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </>
   );
 }
