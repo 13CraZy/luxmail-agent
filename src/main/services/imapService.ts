@@ -294,17 +294,163 @@ export class ImapService {
    * Helper to extract plain text body and remove raw MIME headers / attachments
    */
   private cleanEmailBody(raw: string): string {
-    // Basic body extraction by removing MIME headers
-    const bodyStartIndex = raw.indexOf('\r\n\r\n');
-    if (bodyStartIndex === -1) return raw.substring(0, 1000);
-    
-    const bodyContent = raw.substring(bodyStartIndex + 4);
-    
-    // Strip HTML tags and normalize whitespace
-    return bodyContent
+    // 1. Split headers and body supporting both CRLF and LF
+    let headerEndIndex = raw.indexOf('\r\n\r\n');
+    let doubleNewlineLength = 4;
+    if (headerEndIndex === -1) {
+      headerEndIndex = raw.indexOf('\n\n');
+      doubleNewlineLength = 2;
+    }
+    const headersSection = headerEndIndex !== -1 ? raw.substring(0, headerEndIndex) : '';
+    const bodySection = headerEndIndex !== -1 ? raw.substring(headerEndIndex + doubleNewlineLength) : raw;
+
+    // 2. Check if multipart by extracting boundary
+    const boundaryMatch = headersSection.match(/boundary=(?:"([^"]+)"|([^\s;]+))/i);
+    const boundary = boundaryMatch ? (boundaryMatch[1] || boundaryMatch[2]) : null;
+
+    let textPart = '';
+    let htmlPart = '';
+    let textPartEncoding = '';
+    let htmlPartEncoding = '';
+
+    if (boundary) {
+      // Split the body by the boundary (note boundaries are prefixed with '--')
+      const parts = bodySection.split(`--${boundary}`);
+      for (const part of parts) {
+        const trimmedPart = part.trim();
+        if (!trimmedPart || trimmedPart === '--') continue;
+
+        // Split part headers and part body supporting both CRLF and LF
+        let partHeaderEnd = trimmedPart.indexOf('\r\n\r\n');
+        let partDoubleNewlineLength = 4;
+        if (partHeaderEnd === -1) {
+          partHeaderEnd = trimmedPart.indexOf('\n\n');
+          partDoubleNewlineLength = 2;
+        }
+        const partHeaders = partHeaderEnd !== -1 ? trimmedPart.substring(0, partHeaderEnd) : '';
+        const partBody = partHeaderEnd !== -1 ? trimmedPart.substring(partHeaderEnd + partDoubleNewlineLength) : trimmedPart;
+
+        const contentTypeMatch = partHeaders.match(/Content-Type:\s*([^\s;]+)/i);
+        const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : '';
+
+        const encodingMatch = partHeaders.match(/Content-Transfer-Encoding:\s*([^\s;]+)/i);
+        const encoding = encodingMatch ? encodingMatch[1].toLowerCase() : '';
+
+        if (contentType.startsWith('text/plain')) {
+          textPart = partBody;
+          textPartEncoding = encoding;
+        } else if (contentType.startsWith('text/html')) {
+          htmlPart = partBody;
+          htmlPartEncoding = encoding;
+        } else if (contentType.startsWith('multipart/')) {
+          // Check recursively for subparts
+          const subBoundaryMatch = partHeaders.match(/boundary=(?:"([^"]+)"|([^\s;]+))/i);
+          const subBoundary = subBoundaryMatch ? (subBoundaryMatch[1] || subBoundaryMatch[2]) : null;
+          if (subBoundary) {
+            const subBodyCleaned = this.cleanMultipart(partBody, subBoundary);
+            if (subBodyCleaned) {
+              return subBodyCleaned;
+            }
+          }
+        }
+      }
+    } else {
+      // Not a multipart email message
+      const encodingMatch = headersSection.match(/Content-Transfer-Encoding:\s*([^\s;]+)/i);
+      const contentTypeMatch = headersSection.match(/Content-Type:\s*([^\s;]+)/i);
+      const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : '';
+      const encoding = encodingMatch ? encodingMatch[1].toLowerCase() : '';
+
+      if (contentType.startsWith('text/html')) {
+        htmlPart = bodySection;
+        htmlPartEncoding = encoding;
+      } else {
+        textPart = bodySection;
+        textPartEncoding = encoding;
+      }
+    }
+
+    let finalBody = '';
+    if (textPart) {
+      finalBody = this.decodeContent(textPart, textPartEncoding);
+    } else if (htmlPart) {
+      finalBody = this.decodeContent(htmlPart, htmlPartEncoding);
+      finalBody = finalBody.replace(/<[^>]*>/g, ' ');
+    } else {
+      finalBody = bodySection;
+    }
+
+    // Normalize whitespace and strip residual HTML tags
+    return finalBody
       .replace(/<[^>]*>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-      .substring(0, 2000); // Truncate to 2000 chars to avoid overloading LLM context
+      .substring(0, 2000);
+  }
+
+  private cleanMultipart(body: string, boundary: string): string | null {
+    const parts = body.split(`--${boundary}`);
+    for (const part of parts) {
+      const trimmedPart = part.trim();
+      if (!trimmedPart || trimmedPart === '--') continue;
+
+      let partHeaderEnd = trimmedPart.indexOf('\r\n\r\n');
+      let partDoubleNewlineLength = 4;
+      if (partHeaderEnd === -1) {
+        partHeaderEnd = trimmedPart.indexOf('\n\n');
+        partDoubleNewlineLength = 2;
+      }
+      const partHeaders = partHeaderEnd !== -1 ? trimmedPart.substring(0, partHeaderEnd) : '';
+      const partBody = partHeaderEnd !== -1 ? trimmedPart.substring(partHeaderEnd + partDoubleNewlineLength) : trimmedPart;
+
+      const contentTypeMatch = partHeaders.match(/Content-Type:\s*([^\s;]+)/i);
+      const contentType = contentTypeMatch ? contentTypeMatch[1].toLowerCase() : '';
+
+      const encodingMatch = partHeaders.match(/Content-Transfer-Encoding:\s*([^\s;]+)/i);
+      const encoding = encodingMatch ? encodingMatch[1].toLowerCase() : '';
+
+      if (contentType.startsWith('text/plain')) {
+        return this.decodeContent(partBody, encoding);
+      } else if (contentType.startsWith('text/html')) {
+        return this.decodeContent(partBody, encoding).replace(/<[^>]*>/g, ' ');
+      }
+    }
+    return null;
+  }
+
+  private decodeContent(body: string, encoding: string): string {
+    if (encoding === 'quoted-printable') {
+      return this.decodeQuotedPrintable(body);
+    } else if (encoding === 'base64') {
+      try {
+        return Buffer.from(body.replace(/\s+/g, ''), 'base64').toString('utf-8');
+      } catch (e) {
+        return body;
+      }
+    }
+    return body;
+  }
+
+  private decodeQuotedPrintable(str: string): string {
+    // 1. Remove soft line breaks
+    const cleanStr = str.replace(/=\r?\n/g, '');
+    
+    // 2. Parse byte array
+    const bytes: number[] = [];
+    let i = 0;
+    while (i < cleanStr.length) {
+      const char = cleanStr[i];
+      if (char === '=') {
+        const hex = cleanStr.substring(i + 1, i + 3);
+        if (/^[0-9A-F]{2}$/i.test(hex)) {
+          bytes.push(parseInt(hex, 16));
+          i += 3;
+          continue;
+        }
+      }
+      bytes.push(cleanStr.charCodeAt(i));
+      i++;
+    }
+    return Buffer.from(bytes).toString('utf-8');
   }
 }
