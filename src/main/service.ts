@@ -286,7 +286,7 @@ app.post('/api/test/inject-email', async (req, res) => {
 
   if (imapService && imapService.onNewEmailCallback) {
     // Simulates the exact E2E pipeline as if it was fetched via IMAP
-    imapService.onNewEmailCallback({ sender, subject, body, date: new Date() });
+    imapService.onNewEmailCallback({ sender, subject, body, date: new Date() }, false);
     res.json({ success: true, message: 'Mock email injected into active monitor pipeline.' });
   } else {
     // Dry run if IMAP is offline but AI is configured
@@ -550,22 +550,20 @@ async function restartServices() {
     broadcast({ type: 'email', email: mailLog });
   }
 
-  imapService.onNewEmail(async (email) => {
-    addConsoleLog('info', `New email detected from: ${email.sender}. Topic: "${email.subject}"`);
-    await classifyAndLogEmail(email, true);
+  imapService.onNewEmail(async (email, isInitialScan) => {
+    if (isInitialScan) {
+      addConsoleLog('info', `Initial scan detected email: "${email.subject}"`);
+      await classifyAndLogEmail(email, false);
+    } else {
+      addConsoleLog('info', `New email detected from: ${email.sender}. Topic: "${email.subject}"`);
+      await classifyAndLogEmail(email, true);
+    }
   });
 
   try {
     addConsoleLog('info', 'Establishing connection to IMAP mailbox...');
     await imapService.connect();
     addConsoleLog('success', 'IMAP Mail Monitor online.');
-
-    addConsoleLog('info', "Scanning today's emails...");
-    const todayEmails = await imapService.fetchTodayEmails();
-    addConsoleLog('info', `Found ${todayEmails.length} emails received today. Processing initial scan...`);
-    for (const email of todayEmails) {
-      await classifyAndLogEmail(email, false);
-    }
   } catch (err) {
     addConsoleLog('error', `IMAP connection error: ${(err as Error).message}`);
   }

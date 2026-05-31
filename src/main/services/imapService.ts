@@ -8,12 +8,12 @@ export class ImapService {
   private retryDelay = 5000;
   private explicitlyDisconnected = false;
 
-  public onNewEmailCallback: ((email: { sender: string; subject: string; body: string; date: Date }) => void) | null = null;
+  public onNewEmailCallback: ((email: { sender: string; subject: string; body: string; date: Date }, isInitialScan: boolean) => void) | null = null;
   public onStatusChangeCallback: ((status: 'connected' | 'disconnected' | 'reconnecting') => void) | null = null;
 
   constructor(private config: IMAPConfig) {}
 
-  public onNewEmail(callback: (email: { sender: string; subject: string; body: string; date: Date }) => void) {
+  public onNewEmail(callback: (email: { sender: string; subject: string; body: string; date: Date }, isInitialScan: boolean) => void) {
     this.onNewEmailCallback = callback;
   }
 
@@ -72,6 +72,24 @@ export class ImapService {
 
       // Open the INBOX in read-only mode by default for safety
       await this.client.mailboxOpen('INBOX', { readOnly: true });
+
+      // Scan today's emails before entering IDLE
+      try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        console.log(`[IMAP] Scanning for emails since ${todayStart.toDateString()}...`);
+        const sequenceNumbers = await this.client.search({ since: todayStart });
+        if (sequenceNumbers && sequenceNumbers.length > 0) {
+          // Limit to last 10 emails of today to prevent overloading
+          const targetSeqs = sequenceNumbers.slice(-10);
+          console.log(`[IMAP] Found ${sequenceNumbers.length} emails today. Processing last ${targetSeqs.length} for initial scan...`);
+          for (const seq of targetSeqs) {
+            await this.fetchMessage(seq, true);
+          }
+        }
+      } catch (scanErr) {
+        console.error('[IMAP] Initial scan failed:', scanErr);
+      }
       
       // Begin listening for new emails
       this.startListening();
@@ -220,55 +238,13 @@ export class ImapService {
     return results;
   }
 
-  public async fetchTodayEmails(): Promise<{ sender: string; subject: string; body: string; date: Date }[]> {
-    if (!this.client || this.connectionStatus !== 'connected') {
-      return [];
-    }
-
-    if (!this.client.mailbox) {
-      await this.client.mailboxOpen('INBOX', { readOnly: true });
-    }
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    console.log(`[IMAP] Scanning for emails since ${todayStart.toDateString()}...`);
-    const sequenceNumbers = await this.client.search({ since: todayStart });
-    if (!sequenceNumbers || sequenceNumbers.length === 0) return [];
-
-    const results = [];
-    for (const seq of sequenceNumbers) {
-      try {
-        const message = await this.client.fetchOne(seq.toString(), {
-          envelope: true,
-          source: true,
-        });
-
-        if (message && message.envelope) {
-          const fromList = message.envelope.from || [];
-          const sender = fromList.map(f => `${f.name || ''} <${f.address || ''}>`).join(', ');
-          const subject = message.envelope.subject || '(No Subject)';
-          const date = message.envelope.date || new Date();
-          
-          const rawSource = message.source ? message.source.toString() : '';
-          const body = this.cleanEmailBody(rawSource);
-          
-          results.push({ sender, subject, body, date });
-        }
-      } catch (err) {
-        console.error(`Failed to fetch today's email seq ${seq}:`, err);
-      }
-    }
-    return results;
-  }
-
   private async startListening() {
     if (!this.client) return;
 
     // Listen for new messages using IMAP EXISTS/IDLE event
     this.client.on('exists', async (data) => {
       try {
-        await this.fetchMessage(data.count);
+        await this.fetchMessage(data.count, false);
       } catch (err) {
         console.error('Error fetching new message:', err);
       }
@@ -280,7 +256,7 @@ export class ImapService {
     }
   }
 
-  private async fetchMessage(sequenceNumber: number) {
+  private async fetchMessage(sequenceNumber: number, isInitialScan: boolean = false) {
     if (!this.client) return;
 
     // Fetch envelope (headers), body structure and text parts
@@ -301,7 +277,7 @@ export class ImapService {
     const body = this.cleanEmailBody(rawSource);
 
     if (this.onNewEmailCallback) {
-      this.onNewEmailCallback({ sender, subject, body, date });
+      this.onNewEmailCallback({ sender, subject, body, date }, isInitialScan);
     }
   }
 
