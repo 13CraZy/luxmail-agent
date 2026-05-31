@@ -73,6 +73,14 @@ const translations = {
     notificationRulesPlaceholder: 'e.g., Only alert me if the email is about interviews, job offers, or urgent messages from Alan.',
     notificationPhoneLabel: 'WhatsApp Phone Number',
     notificationPhonePlaceholder: 'e.g., +526461234567',
+    dndLabel: 'Do Not Disturb (DND)',
+    dndSub: 'Silent hours to pause WhatsApp alerts',
+    dndStartLabel: 'Start Time',
+    dndEndLabel: 'End Time',
+    dndPresetLabel: 'DND Presets',
+    dndPresetNight: 'Night (22:00 - 08:00)',
+    dndPresetWork: 'Work (09:00 - 17:00)',
+    dndPresetNone: 'Custom',
     quickActions: 'Quick Search Suggestions',
     quickSearchToday: "Search today's emails",
     quickSearchInterview: "Search interview calls this week",
@@ -148,6 +156,14 @@ const translations = {
     notificationRulesPlaceholder: 'ej. Solo avísame si el correo es sobre entrevistas, ofertas de trabajo o mensajes urgentes de Alan.',
     notificationPhoneLabel: 'Número de WhatsApp',
     notificationPhonePlaceholder: 'ej. +526461234567',
+    dndLabel: 'No Molestar (DND)',
+    dndSub: 'Horario de silencio para pausar alertas de WhatsApp',
+    dndStartLabel: 'Hora de Inicio',
+    dndEndLabel: 'Hora de Fin',
+    dndPresetLabel: 'Preajustes DND',
+    dndPresetNight: 'Noche (22:00 - 08:00)',
+    dndPresetWork: 'Trabajo (09:00 - 17:00)',
+    dndPresetNone: 'Personalizado',
     quickActions: 'Sugerencias de Búsqueda Rápida',
     quickSearchToday: "Buscar correos de hoy",
     quickSearchInterview: "Buscar entrevistas de esta semana",
@@ -171,6 +187,10 @@ export default function App() {
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
   const [notificationRules, setNotificationRules] = useState('');
   const [notificationPhone, setNotificationPhone] = useState('');
+  const [dndEnabled, setDndEnabled] = useState(false);
+  const [dndStart, setDndStart] = useState('22:00');
+  const [dndEnd, setDndEnd] = useState('08:00');
+  const [dndPreset, setDndPreset] = useState<'night' | 'work' | 'custom'>('night');
   const [isSaving, setIsSaving] = useState(false);
   const [showSavedCheck, setShowSavedCheck] = useState(false);
   const [isLoggingOutWa, setIsLoggingOutWa] = useState(false);
@@ -289,6 +309,16 @@ export default function App() {
         }
         setNotificationRules(data.notificationRules || '');
         setNotificationPhone(data.notificationPhone || '');
+        setDndEnabled(data.dndEnabled || false);
+        if (data.dndStart) setDndStart(data.dndStart);
+        if (data.dndEnd) setDndEnd(data.dndEnd);
+        if (data.dndStart === '22:00' && data.dndEnd === '08:00') {
+          setDndPreset('night');
+        } else if (data.dndStart === '09:00' && data.dndEnd === '17:00') {
+          setDndPreset('work');
+        } else {
+          setDndPreset('custom');
+        }
         addLog('success', 'Loaded configuration from backend daemon storage.');
       })
       .catch(() => {
@@ -377,6 +407,9 @@ export default function App() {
       language,
       notificationRules: notificationRules.trim() || undefined,
       notificationPhone: notificationPhone.trim() || undefined,
+      dndEnabled,
+      dndStart: dndEnabled ? dndStart : undefined,
+      dndEnd: dndEnabled ? dndEnd : undefined,
     };
 
     try {
@@ -746,6 +779,79 @@ export default function App() {
                         rows={3}
                         className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-emerald-500/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200 resize-none font-sans"
                       />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Do Not Disturb (DND) Config Card */}
+              <div className="p-4 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col gap-3.5 backdrop-blur-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col pr-2">
+                    <span className="text-xs font-bold select-none text-accent-amber">{t('dndLabel')}</span>
+                    <span className="text-[9px] text-zinc-500">{t('dndSub')}</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 select-none">
+                    <input
+                      type="checkbox"
+                      checked={dndEnabled}
+                      onChange={() => setDndEnabled(!dndEnabled)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-6 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
+                </div>
+
+                {dndEnabled && (
+                  <div className="flex flex-col gap-3.5 pt-2 border-t border-zinc-800/30">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('dndPresetLabel')}</label>
+                      <select
+                        value={dndPreset}
+                        onChange={e => {
+                          const preset = e.target.value as 'night' | 'work' | 'custom';
+                          setDndPreset(preset);
+                          if (preset === 'night') {
+                            setDndStart('22:00');
+                            setDndEnd('08:00');
+                          } else if (preset === 'work') {
+                            setDndStart('09:00');
+                            setDndEnd('17:00');
+                          }
+                        }}
+                        className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                      >
+                        <option value="night" className="bg-card">{t('dndPresetNight')}</option>
+                        <option value="work" className="bg-card">{t('dndPresetWork')}</option>
+                        <option value="custom" className="bg-card">{t('dndPresetNone')}</option>
+                      </select>
+                    </div>
+
+                    <div className="flex gap-3 w-full">
+                      <div className="flex-1 flex flex-col gap-1.5">
+                        <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('dndStartLabel')}</label>
+                        <input
+                          type="time"
+                          value={dndStart}
+                          onChange={e => {
+                            setDndStart(e.target.value);
+                            setDndPreset('custom');
+                          }}
+                          className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                        />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-1.5">
+                        <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('dndEndLabel')}</label>
+                        <input
+                          type="time"
+                          value={dndEnd}
+                          onChange={e => {
+                            setDndEnd(e.target.value);
+                            setDndPreset('custom');
+                          }}
+                          className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}

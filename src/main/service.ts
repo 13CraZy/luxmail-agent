@@ -32,6 +32,26 @@ function translateUrgency(urgency: string, lang: 'en' | 'es'): string {
   return mapping[urgency] || urgency;
 }
 
+function isCurrentlyInDndRange(startStr: string | undefined, endStr: string | undefined): boolean {
+  if (!startStr || !endStr) return false;
+
+  const now = new Date();
+  const currentHours = now.getHours();
+  const currentMinutes = now.getMinutes();
+  const currentMinutesTotal = currentHours * 60 + currentMinutes;
+
+  const [startH, startM] = startStr.split(':').map(Number);
+  const [endH, endM] = endStr.split(':').map(Number);
+  const startMinutesTotal = startH * 60 + startM;
+  const endMinutesTotal = endH * 60 + endM;
+
+  if (startMinutesTotal <= endMinutesTotal) {
+    return currentMinutesTotal >= startMinutesTotal && currentMinutesTotal <= endMinutesTotal;
+  } else {
+    return currentMinutesTotal >= startMinutesTotal || currentMinutesTotal <= endMinutesTotal;
+  }
+}
+
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.resolve('./data');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
@@ -476,8 +496,16 @@ async function restartServices() {
       addConsoleLog('info', `Custom notification rules result: shouldNotify = ${shouldNotify}`);
     }
 
-    // Forward WhatsApp alerts if email meets priority/custom rules threshold
-    if (shouldNotify && config?.whatsappEnabled && whatsappService) {
+    // Forward WhatsApp alerts if email meets priority/custom rules threshold and DND is not active
+    let dndActive = false;
+    if (config?.dndEnabled && config.dndStart && config.dndEnd) {
+      dndActive = isCurrentlyInDndRange(config.dndStart, config.dndEnd);
+      if (dndActive) {
+        addConsoleLog('warn', `WhatsApp notification skipped due to active Do Not Disturb (DND) silent hours (${config.dndStart} - ${config.dndEnd}).`);
+      }
+    }
+
+    if (shouldNotify && !dndActive && config?.whatsappEnabled && whatsappService) {
       const isSpanish = currentLanguage === 'es';
       const alertMessage = isSpanish
         ? `📬 *Alerta de LuxMail*\n\n*De:* ${email.sender}\n*Asunto:* ${email.subject}\n*Resumen:* ${result.summary}\n\n_Clasificación: ${translateCategory(result.category, 'es')} (prioridad ${translateUrgency(result.urgency, 'es')})_`

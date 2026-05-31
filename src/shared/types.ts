@@ -27,6 +27,9 @@ export interface AgentConfig {
   language?: 'en' | 'es';
   notificationRules?: string;
   notificationPhone?: string;
+  dndEnabled: boolean;
+  dndStart?: string;
+  dndEnd?: string;
 }
 
 export interface SystemStatus {
