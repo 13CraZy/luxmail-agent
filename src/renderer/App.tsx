@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mail, Cpu, Terminal, CheckCircle, Wifi, RefreshCw, Globe } from 'lucide-react';
+import { Mail, Cpu, Terminal, CheckCircle, Wifi, RefreshCw, Globe, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { AgentConfig, SystemStatus, MailLog, ConsoleLog, AIProvider } from '../shared/types';
 
 const translations = {
@@ -220,6 +220,7 @@ export default function App() {
   const [logs, setLogs] = useState<ConsoleLog[]>([
     { timestamp: new Date().toLocaleTimeString(), level: 'info', message: 'LuxMail Agent dashboard launched.' }
   ]);
+  const [isConsoleCollapsed, setIsConsoleCollapsed] = useState(false);
   const [emails, setEmails] = useState<MailLog[]>([]);
   const [activeTab, setActiveTab] = useState<'status' | 'settings'>('status');
 
@@ -474,6 +475,21 @@ export default function App() {
       addLog('error', `Network error during WhatsApp logout: ${(err as Error).message}`);
     } finally {
       setIsLoggingOutWa(false);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    try {
+      const response = await fetch(`${apiBase}/api/logs/clear`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        setLogs([]);
+      } else {
+        addLog('error', 'Failed to clear logs on server.');
+      }
+    } catch (err) {
+      addLog('error', `Failed to contact daemon: ${(err as Error).message}`);
     }
   };
 
@@ -1237,27 +1253,53 @@ export default function App() {
             </div>
 
             {/* Bottom Widget: Live Output Console */}
-            <div className="h-[200px] shrink-0 border border-card-border rounded-2xl bg-black overflow-hidden flex flex-col font-mono">
-              <div className="px-4 py-2 border-b border-card-border flex justify-between items-center bg-[rgba(255,255,255,0.02)]">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-muted select-none">
+            <div className={`shrink-0 border border-card-border rounded-2xl bg-black overflow-hidden flex flex-col font-mono transition-all duration-300 ${isConsoleCollapsed ? 'h-10' : 'h-[200px]'}`}>
+              <div className="px-4 py-2 border-b border-card-border flex justify-between items-center bg-[rgba(255,255,255,0.02)] select-none">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-muted">
                   <Terminal size={12} />
                   <span>{t('localConsole')}</span>
                 </div>
-                <span className="text-[8px] tracking-widest text-muted uppercase">{t('realTimeStream')}</span>
+                
+                <div className="flex items-center gap-3">
+                  <span className="text-[8px] tracking-widest text-muted uppercase hidden sm:inline">{t('realTimeStream')}</span>
+                  
+                  {/* Clean Console logs action button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleClearLogs();
+                    }}
+                    className="p-1 hover:text-white text-muted rounded hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center"
+                    title={language === 'es' ? 'Limpiar consola' : 'Clear console'}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+
+                  {/* Collapse / Expand Toggle Button */}
+                  <button
+                    onClick={() => setIsConsoleCollapsed(!isConsoleCollapsed)}
+                    className="p-1 hover:text-white text-muted rounded hover:bg-white/5 active:scale-95 transition-all flex items-center justify-center"
+                    title={isConsoleCollapsed ? (language === 'es' ? 'Expandir' : 'Collapse') : (language === 'es' ? 'Contraer' : 'Expand')}
+                  >
+                    {isConsoleCollapsed ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                </div>
               </div>
 
-              <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-1.5 text-[10px] leading-relaxed">
-                {logs.map((log, idx) => (
-                  <div key={idx} className="flex gap-2 items-start">
-                    <span className="text-muted shrink-0 select-none">[{log.timestamp}]</span>
-                    <span className={`shrink-0 select-none ${log.level === 'error' ? 'text-accent-cherry font-bold' : log.level === 'warn' ? 'text-accent-amber font-bold' : log.level === 'success' ? 'text-emerald-400 font-bold' : 'text-sky-400'}`}>
-                      {log.level.toUpperCase()}:
-                    </span>
-                    <span className="text-neutral-300 select-text">{log.message}</span>
-                  </div>
-                ))}
-                <div ref={terminalEndRef} />
-              </div>
+              {!isConsoleCollapsed && (
+                <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-1.5 text-[10px] leading-relaxed">
+                  {logs.map((log, idx) => (
+                    <div key={idx} className="flex gap-2 items-start">
+                      <span className="text-muted shrink-0 select-none">[{log.timestamp}]</span>
+                      <span className={`shrink-0 select-none ${log.level === 'error' ? 'text-accent-cherry font-bold' : log.level === 'warn' ? 'text-accent-amber font-bold' : log.level === 'success' ? 'text-emerald-400 font-bold' : 'text-sky-400'}`}>
+                        {log.level.toUpperCase()}:
+                      </span>
+                      <span className="text-neutral-300 select-text">{log.message}</span>
+                    </div>
+                  ))}
+                  <div ref={terminalEndRef} />
+                </div>
+              )}
             </div>
           </div>
         </div>

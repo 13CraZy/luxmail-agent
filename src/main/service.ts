@@ -189,6 +189,12 @@ app.get('/api/logs', (_req, res) => {
   res.json({ emails: emailLogs, console: consoleLogs });
 });
 
+app.post('/api/logs/clear', (_req, res) => {
+  consoleLogs.length = 0;
+  addConsoleLog('success', 'Console logs cleared.');
+  res.json({ success: true });
+});
+
 app.post('/api/whatsapp/logout', async (req, res) => {
   addConsoleLog('info', 'Request received to log out WhatsApp session.');
   try {
