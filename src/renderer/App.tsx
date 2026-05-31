@@ -460,13 +460,13 @@ export default function App() {
           <div className="grid grid-cols-2 gap-1 p-0.5 rounded-xl bg-zinc-950 border border-zinc-800/30">
             <button
               onClick={() => setActiveTab('status')}
-              className={`py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 ${activeTab === 'status' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
+              className={`py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 ${activeTab === 'status' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
             >
               {t('status')}
             </button>
             <button
               onClick={() => setActiveTab('settings')}
-              className={`py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 ${activeTab === 'settings' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
+              className={`py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 ${activeTab === 'settings' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
             >
               {t('settings')}
             </button>
@@ -628,12 +628,12 @@ export default function App() {
               <button
                 onClick={handleSaveConfig}
                 disabled={isSaving || !isConfigValid}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all select-none flex items-center justify-center gap-1.5 ${
+                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all duration-200 select-none flex items-center justify-center gap-1.5 ${
                   !isConfigValid
                     ? 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-800/20'
                     : showSavedCheck 
-                      ? 'bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] border border-emerald-400/20' 
-                      : 'bg-white text-black hover:bg-neutral-200'
+                      ? 'bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] border border-emerald-400/20 active:scale-[0.98]' 
+                      : 'bg-white text-black hover:bg-neutral-200 active:scale-[0.98] hover:scale-[1.01]'
                 }`}
               >
                 {isSaving && <RefreshCw size={12} className="animate-spin" />}
