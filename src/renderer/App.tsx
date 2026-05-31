@@ -12,6 +12,18 @@ const translations = {
     hostPort: 'Host / Port',
     emailAddress: 'Email Address',
     appPassword: 'App Password',
+    imapPresetLabel: 'IMAP Provider Preset',
+    presetGmail: 'Gmail Preset',
+    presetOutlook: 'Outlook Preset',
+    presetCustom: 'Custom / Manual',
+    appPasswordGuideBtn: 'Gmail App Password Guide',
+    guideTitle: 'Gmail App Password Setup',
+    guideStep1: '1. Go to your Google Account (myaccount.google.com).',
+    guideStep2: '2. Enable 2-Step Verification in the Security tab.',
+    guideStep3: '3. Search for "App passwords" in the search bar.',
+    guideStep4: '4. Generate a code named "LuxMail" and copy the 16 characters.',
+    guideStep5: '5. Paste the 16 characters into the App Password input below.',
+    guideClose: 'Got it',
     aiEngine: 'AI ENGINE',
     provider: 'Provider',
     apiKey: 'API Key',
@@ -72,6 +84,18 @@ const translations = {
     hostPort: 'Host / Puerto',
     emailAddress: 'Correo Electrónico',
     appPassword: 'Contraseña de Aplicación',
+    imapPresetLabel: 'Preajuste de Proveedor',
+    presetGmail: 'Preajuste Gmail',
+    presetOutlook: 'Preajuste Outlook',
+    presetCustom: 'Personalizado / Manual',
+    appPasswordGuideBtn: 'Guía de Contraseña de Gmail',
+    guideTitle: 'Configurar Contraseña de Gmail',
+    guideStep1: '1. Ve a tu Cuenta de Google (myaccount.google.com).',
+    guideStep2: '2. Activa la Verificación en 2 Pasos en la pestaña de Seguridad.',
+    guideStep3: '3. Busca "Contraseñas de aplicaciones" en el buscador superior.',
+    guideStep4: '4. Crea una contraseña llamada "LuxMail" y copia los 16 caracteres.',
+    guideStep5: '5. Pega los 16 caracteres en el campo de contraseña abajo.',
+    guideClose: 'Entendido',
     aiEngine: 'MOTOR DE IA',
     provider: 'Proveedor',
     apiKey: 'Llave de API',
@@ -128,6 +152,8 @@ const translations = {
 export default function App() {
   // Configuration State
   const [language, setLanguage] = useState<'en' | 'es'>('en');
+  const [imapPreset, setImapPreset] = useState<'gmail' | 'outlook' | 'custom'>('custom');
+  const [showAppPasswordGuide, setShowAppPasswordGuide] = useState(false);
   const [imapHost, setImapHost] = useState('imap.gmail.com');
   const [imapPort, setImapPort] = useState(993);
   const [imapUser, setImapUser] = useState('');
@@ -233,6 +259,13 @@ export default function App() {
           setImapPort(data.imap.port);
           setImapUser(data.imap.user);
           setImapPass(data.imap.passwordHex);
+          if (data.imap.host === 'imap.gmail.com') {
+            setImapPreset('gmail');
+          } else if (data.imap.host === 'outlook.office365.com') {
+            setImapPreset('outlook');
+          } else {
+            setImapPreset('custom');
+          }
         }
         if (data.ai) {
           setAiProvider(data.ai.provider);
@@ -498,19 +531,53 @@ export default function App() {
                   <Mail size={14} />
                   <span>{t('imapMailbox')}</span>
                 </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('imapPresetLabel')}</label>
+                  <select
+                    value={imapPreset}
+                    onChange={e => {
+                      const preset = e.target.value as 'gmail' | 'outlook' | 'custom';
+                      setImapPreset(preset);
+                      if (preset === 'gmail') {
+                        setImapHost('imap.gmail.com');
+                        setImapPort(993);
+                      } else if (preset === 'outlook') {
+                        setImapHost('outlook.office365.com');
+                        setImapPort(993);
+                      }
+                    }}
+                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                  >
+                    <option value="gmail" className="bg-card">{t('presetGmail')}</option>
+                    <option value="outlook" className="bg-card">{t('presetOutlook')}</option>
+                    <option value="custom" className="bg-card">{t('presetCustom')}</option>
+                  </select>
+                </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('hostPort')}</label>
                   <div className="flex gap-2 w-full">
                     <input
                       type="text"
                       value={imapHost}
-                      onChange={e => setImapHost(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setImapHost(val);
+                        if (val === 'imap.gmail.com') setImapPreset('gmail');
+                        else if (val === 'outlook.office365.com') setImapPreset('outlook');
+                        else setImapPreset('custom');
+                      }}
                       className="flex-1 min-w-0 bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                     />
                     <input
                       type="number"
                       value={imapPort}
-                      onChange={e => setImapPort(Number(e.target.value))}
+                      onChange={e => {
+                        const val = Number(e.target.value);
+                        setImapPort(val);
+                        if (imapHost === 'imap.gmail.com' && val === 993) setImapPreset('gmail');
+                        else if (imapHost === 'outlook.office365.com' && val === 993) setImapPreset('outlook');
+                        else setImapPreset('custom');
+                      }}
                       className="w-16 shrink-0 bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2 py-1.5 text-xs text-white text-center focus:outline-none transition-all duration-200"
                     />
                   </div>
@@ -534,6 +601,15 @@ export default function App() {
                     placeholder="•••• •••• •••• ••••"
                     className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                   />
+                  {imapPreset === 'gmail' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAppPasswordGuide(true)}
+                      className="text-left text-[10px] text-accent-purple hover:underline select-none mt-0.5 flex items-center gap-1 active:scale-95 transition-all w-fit"
+                    >
+                      <span>🔑 {t('appPasswordGuideBtn')}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -893,6 +969,30 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {showAppPasswordGuide && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 select-none">
+          <div className="w-full max-w-sm rounded-3xl bg-[#07070c]/95 border border-zinc-800/60 p-6 flex flex-col gap-4 backdrop-blur-md shadow-2xl">
+            <div className="flex items-center gap-2 text-accent-purple font-bold text-sm">
+              <Mail size={16} />
+              <h3>{t('guideTitle')}</h3>
+            </div>
+            <div className="flex flex-col gap-3.5 text-xs text-neutral-300 leading-relaxed font-sans">
+              <p>{t('guideStep1')}</p>
+              <p>{t('guideStep2')}</p>
+              <p>{t('guideStep3')}</p>
+              <p>{t('guideStep4')}</p>
+              <p>{t('guideStep5')}</p>
+            </div>
+            <button
+              onClick={() => setShowAppPasswordGuide(false)}
+              className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all mt-2 select-none"
+            >
+              {t('guideClose')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
