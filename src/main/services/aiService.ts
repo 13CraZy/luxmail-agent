@@ -321,10 +321,18 @@ Return a JSON object matching this schema. Only include fields if they are expli
       result.since = d.toISOString().split('T')[0];
     }
 
-    // Sender detection (from X, de X, de parte de X)
-    const fromMatch = q.match(/(?:from|de|de parte de)\s+([a-zA-Z0-9áéíóúñ]+)/i);
-    if (fromMatch && !['hoy', 'ayer', 'empleo', 'trabajo', 'hoy', 'correos', 'correo', 'mis', 'las', 'los', 'un', 'una'].includes(fromMatch[1])) {
-      result.from = fromMatch[1];
+    // Sender detection (from X, de X, de parte de X) - uses word boundaries
+    const fromMatch = q.match(/\b(?:from|de|de parte de)\b\s+([a-zA-Z0-9áéíóúñ]+)/i);
+    if (fromMatch) {
+      const candidate = fromMatch[1].toLowerCase();
+      const exclusions = [
+        'hoy', 'ayer', 'empleo', 'trabajo', 'correos', 'correo', 'mis', 'las', 'los', 'un', 'una', 
+        'hace', 'desde', 'mes', 'meses', 'año', 'semana', 'mi', 'tu', 'su', 'linkedin', 'indeed', 
+        'respuestas', 'respuesta', 'postulaciones', 'postulacion'
+      ];
+      if (!exclusions.includes(candidate)) {
+        result.from = fromMatch[1];
+      }
     }
 
     // Keyword/platform detection for OR-style searches
@@ -403,9 +411,25 @@ Write your response in ${targetLang}. Be highly professional, direct, and concis
       throw new Error('AI Provider Client not initialized.');
     } catch (err) {
       console.error('Error generating chat response:', err);
-      return language === 'es' 
-        ? 'Lo siento, no pude procesar tu solicitud de chat debido a un límite de cuota o error temporal de la IA. Por favor, intenta de nuevo.'
-        : 'Sorry, I could not process your chat request right now due to a temporary quota limit or AI error. Please try again.';
+      const isSpanish = language === 'es';
+      if (emails.length === 0) {
+        return isSpanish
+          ? '⚠️ **Límite de API (429/Error) alcanzado**\n\nNo pude procesar la respuesta usando la IA de Google/Ollama por límites de cuota, y tampoco encontré correos que coincidan con tu búsqueda en el buzón local.'
+          : '⚠️ **API Limit/Error Reached**\n\nI could not generate the AI response due to quota limits, and no matching emails were found in your local mailbox.';
+      }
+
+      let fallbackText = isSpanish
+        ? `⚠️ **Respuesta Local (Cuota Excedida / Límite de API 429)**\n\nNo pude conectar con el servicio de IA de Google/Ollama por límites de cuota de su servicio gratuito (429 Too Many Requests).\n\nSin embargo, **he buscado localmente** y encontré los siguientes correos coincidentes:\n\n`
+        : `⚠️ **Local Response (AI Quota Exceeded / API Limit 429)**\n\nCould not connect to Google/Ollama AI due to free-tier rate limits (429 Too Many Requests).\n\nHowever, **I searched locally** and found these matching emails:\n\n`;
+
+      emails.forEach((email, idx) => {
+        fallbackText += `### ${idx + 1}. ${email.subject}\n`;
+        fallbackText += `* **De:** ${email.sender}\n`;
+        fallbackText += `* **Fecha:** ${email.date}\n`;
+        fallbackText += `* **Resumen:** ${email.bodySummary}\n\n`;
+      });
+
+      return fallbackText;
     }
   }
 }
