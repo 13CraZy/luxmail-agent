@@ -353,8 +353,9 @@ async function restartServices() {
   const currentLanguage = config.language || 'en';
 
   // 2. Initialize AI Engine
+  const isOllama = config.ai.provider === 'ollama';
   const hasValidApiKey = config.ai.apiKeyHex && !config.ai.apiKeyHex.startsWith('test') && !config.ai.apiKeyHex.includes('••••');
-  if (hasValidApiKey) {
+  if (isOllama || hasValidApiKey) {
     aiService = new AIService(config.ai);
     addConsoleLog('success', `AI Engine initialized using provider: ${config.ai.provider.toUpperCase()}`);
   } else {

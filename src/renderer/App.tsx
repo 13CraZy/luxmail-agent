@@ -66,6 +66,7 @@ const translations = {
     chatWarningOffline: 'AI Engine or IMAP connection is offline. Connect them in Settings first.',
     aiModelLabel: 'AI Model',
     aiModelPlaceholder: 'gemini-2.5-flash, gemini-2.5-pro, gpt-4o, etc.',
+    ollamaEndpointLabel: 'Ollama Endpoint',
     notificationRulesLabel: 'Notification Rules (Natural Language)',
     notificationRulesPlaceholder: 'e.g., Only alert me if the email is about interviews, job offers, or urgent messages from Alan.',
     notificationPhoneLabel: 'WhatsApp Phone Number',
@@ -138,6 +139,7 @@ const translations = {
     chatWarningOffline: 'El motor de IA o la conexión IMAP están fuera de línea. Conéctalos en Ajustes primero.',
     aiModelLabel: 'Modelo de IA',
     aiModelPlaceholder: 'gemini-2.5-flash, gemini-2.5-pro, gpt-4o, etc.',
+    ollamaEndpointLabel: 'Endpoint de Ollama',
     notificationRulesLabel: 'Reglas de Notificación (Lenguaje Natural)',
     notificationRulesPlaceholder: 'ej. Solo avísame si el correo es sobre entrevistas, ofertas de trabajo o mensajes urgentes de Alan.',
     notificationPhoneLabel: 'Número de WhatsApp',
@@ -161,6 +163,7 @@ export default function App() {
   const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
   const [aiKey, setAiKey] = useState('');
   const [aiModel, setAiModel] = useState('');
+  const [ollamaEndpoint, setOllamaEndpoint] = useState('http://localhost:11434');
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
   const [notificationRules, setNotificationRules] = useState('');
   const [notificationPhone, setNotificationPhone] = useState('');
@@ -271,6 +274,9 @@ export default function App() {
           setAiProvider(data.ai.provider);
           setAiKey(data.ai.apiKeyHex);
           setAiModel(data.ai.modelName || '');
+          if (data.ai.ollamaEndpoint) {
+            setOllamaEndpoint(data.ai.ollamaEndpoint);
+          }
         }
         setWhatsappEnabled(data.whatsappEnabled);
         if (data.language) {
@@ -358,6 +364,7 @@ export default function App() {
         provider: aiProvider,
         apiKeyHex: aiKey,
         modelName: aiModel.trim() || undefined,
+        ollamaEndpoint: ollamaEndpoint.trim() || undefined,
       },
       whatsappEnabled,
       telegramEnabled: false,
@@ -441,7 +448,7 @@ export default function App() {
     imapPort > 0 && 
     imapUser.trim() !== '' && 
     imapPass.trim() !== '' && 
-    aiKey.trim() !== '';
+    (aiProvider === 'ollama' ? ollamaEndpoint.trim() !== '' : aiKey.trim() !== '');
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-white font-sans overflow-hidden">
@@ -629,18 +636,32 @@ export default function App() {
                     <option value="gemini" className="bg-card">Google Gemini (Recommended)</option>
                     <option value="deepseek" className="bg-card">DeepSeek API</option>
                     <option value="openai" className="bg-card">OpenAI GPT</option>
+                    <option value="ollama" className="bg-card">Ollama (Local Offline)</option>
                   </select>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('apiKey')}</label>
-                  <input
-                    type="password"
-                    value={aiKey}
-                    onChange={e => setAiKey(e.target.value)}
-                    placeholder="sk-••••••••••••••••"
-                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
-                  />
-                </div>
+                {aiProvider === 'ollama' ? (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('ollamaEndpointLabel')}</label>
+                    <input
+                      type="text"
+                      value={ollamaEndpoint}
+                      onChange={e => setOllamaEndpoint(e.target.value)}
+                      placeholder="http://localhost:11434"
+                      className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('apiKey')}</label>
+                    <input
+                      type="password"
+                      value={aiKey}
+                      onChange={e => setAiKey(e.target.value)}
+                      placeholder="sk-••••••••••••••••"
+                      className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                    />
+                  </div>
+                )}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('aiModelLabel')}</label>
                   <input
@@ -649,7 +670,8 @@ export default function App() {
                     onChange={e => setAiModel(e.target.value)}
                     placeholder={
                       aiProvider === 'gemini' ? 'gemini-2.5-flash' :
-                      aiProvider === 'openai' ? 'gpt-4o-mini' : 'deepseek-chat'
+                      aiProvider === 'openai' ? 'gpt-4o-mini' : 
+                      aiProvider === 'ollama' ? 'llama3' : 'deepseek-chat'
                     }
                     className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                   />

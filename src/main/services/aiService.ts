@@ -33,6 +33,36 @@ export class AIService {
     }
   }
 
+  private async callOllama(prompt: string, json: boolean = false, systemMessage?: string): Promise<string> {
+    const endpoint = this.config.ollamaEndpoint || 'http://localhost:11434';
+    const model = this.config.modelName || 'llama3';
+    const url = `${endpoint}/api/generate`;
+    const body: any = {
+      model,
+      prompt,
+      stream: false,
+    };
+    if (json) {
+      body.format = 'json';
+    }
+    if (systemMessage) {
+      body.system = systemMessage;
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Ollama HTTP error! status: ${res.status}`);
+    }
+
+    const data: any = await res.json();
+    return data.response;
+  }
+
   public async classifyEmail(sender: string, subject: string, body: string, language: 'en' | 'es' = 'en'): Promise<ClassificationResult> {
     const summaryLanguage = language === 'es' ? 'Spanish' : 'English';
     const prompt = `
@@ -61,6 +91,11 @@ Return a JSON object matching this schema:
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
+        return JSON.parse(responseText.trim()) as ClassificationResult;
+      }
+
+      if (this.config.provider === 'ollama') {
+        const responseText = await this.callOllama(prompt, true);
         return JSON.parse(responseText.trim()) as ClassificationResult;
       }
 
@@ -143,6 +178,12 @@ Return a JSON object matching this schema:
         return !!parsed.shouldNotify;
       }
 
+      if (this.config.provider === 'ollama') {
+        const responseText = await this.callOllama(prompt, true);
+        const parsed = JSON.parse(responseText.trim());
+        return !!parsed.shouldNotify;
+      }
+
       if (this.openaiClient) {
         const modelName = this.config.provider === 'deepseek'
           ? (this.config.modelName || 'deepseek-chat')
@@ -212,6 +253,11 @@ Return a JSON object matching this schema. Only include fields if they are expli
         return JSON.parse(result.response.text().trim());
       }
 
+      if (this.config.provider === 'ollama') {
+        const responseText = await this.callOllama(prompt, true);
+        return JSON.parse(responseText.trim());
+      }
+
       if (this.openaiClient) {
         const modelName = this.config.provider === 'deepseek'
           ? (this.config.modelName || 'deepseek-chat')
@@ -267,6 +313,10 @@ Write your response in ${targetLang}. Be highly professional, direct, and concis
         });
         const result = await model.generateContent(systemPrompt);
         return result.response.text().trim();
+      }
+
+      if (this.config.provider === 'ollama') {
+        return await this.callOllama(systemPrompt, false);
       }
 
       if (this.openaiClient) {

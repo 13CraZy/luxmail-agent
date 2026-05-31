@@ -6,13 +6,14 @@ export interface IMAPConfig {
   secure: boolean;
 }
 
-export type AIProvider = 'gemini' | 'openai' | 'deepseek';
+export type AIProvider = 'gemini' | 'openai' | 'deepseek' | 'ollama';
 
 export interface AIConfig {
   provider: AIProvider;
   apiKeyHex: string;
   customEndpoint?: string;
   modelName?: string;
+  ollamaEndpoint?: string;
 }
 
 export interface AgentConfig {
