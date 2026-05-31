@@ -235,6 +235,10 @@ export default function App() {
     }]);
   };
 
+  const addConsoleLog = (level: ConsoleLog['level'], message: string) => {
+    addLog(level, message);
+  };
+
   const handleSaveConfig = async () => {
     setIsSaving(true);
     addLog('info', 'Applying configuration updates...');
@@ -279,9 +283,12 @@ export default function App() {
     }
   };
 
-  const addConsoleLog = (level: ConsoleLog['level'], message: string) => {
-    addLog(level, message);
-  };
+  const isConfigValid = 
+    imapHost.trim() !== '' && 
+    imapPort > 0 && 
+    imapUser.trim() !== '' && 
+    imapPass.trim() !== '' && 
+    aiKey.trim() !== '';
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-white font-sans overflow-hidden">
@@ -328,7 +335,7 @@ export default function App() {
       {/* 2. Main Workspace */}
       <main className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         {/* Left Side Pane: Navigation & Configurations */}
-        <div className="w-full md:w-[320px] shrink-0 border-b md:border-b-0 md:border-r border-card-border bg-[#050508] p-5 pb-8 flex flex-col gap-4 overflow-y-auto h-auto md:h-full min-h-0">
+        <div className="w-full md:w-[320px] shrink-0 border-b md:border-b-0 md:border-r border-card-border bg-[#050508] p-5 pb-8 flex flex-col gap-4 overflow-y-auto h-auto md:h-[calc(100vh-4rem)] min-h-0">
           {/* Tab Selection */}
           <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[rgba(255,255,255,0.03)] border border-card-border">
             <button
@@ -460,11 +467,13 @@ export default function App() {
               {/* Save Config Button */}
               <button
                 onClick={handleSaveConfig}
-                disabled={isSaving}
-                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all select-none disabled:opacity-50 flex items-center justify-center gap-1.5 ${
-                  showSavedCheck 
-                    ? 'bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] border border-emerald-400/20' 
-                    : 'bg-foreground text-background hover:bg-neutral-200'
+                disabled={isSaving || !isConfigValid}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all select-none flex items-center justify-center gap-1.5 ${
+                  !isConfigValid
+                    ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-card-border opacity-40'
+                    : showSavedCheck 
+                      ? 'bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] border border-emerald-400/20' 
+                      : 'bg-foreground text-background hover:bg-neutral-200'
                 }`}
               >
                 {isSaving && <RefreshCw size={12} className="animate-spin" />}
