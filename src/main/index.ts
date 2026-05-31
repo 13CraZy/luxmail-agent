@@ -21,7 +21,7 @@ function createWindow() {
   });
 
   // Check if we are running in development mode
-  const isDev = process.env.NODE_ENV === 'development';
+  const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 
   if (isDev) {
     // Load Vite development server
@@ -29,7 +29,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // Load production HTML compiled by Vite
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    mainWindow.loadFile(path.join(app.getAppPath(), 'dist/renderer/index.html'));
   }
 
   mainWindow.on('closed', () => {
