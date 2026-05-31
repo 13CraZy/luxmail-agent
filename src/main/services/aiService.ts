@@ -120,12 +120,34 @@ Return a JSON object matching this schema:
       throw new Error('AI Provider Client not initialized.');
     } catch (err) {
       console.error('Error during AI classification:', err);
-      // Fallback response in case of API failure
+      
+      // Local rule-based fallback to guarantee clean UI without raw JSON errors
+      const isPriority = subject.toLowerCase().includes('interview') || subject.toLowerCase().includes('schedule');
+      const category: 'Interview' | 'Job Offer' | 'Reject' | 'Spam' | 'General' = isPriority ? 'Interview' 
+                     : (subject.toLowerCase().includes('rejection') || body.toLowerCase().includes('proceed with another')) ? 'Reject'
+                     : (subject.toLowerCase().includes('offer') || body.toLowerCase().includes('job offer')) ? 'Job Offer'
+                     : (subject.toLowerCase().includes('discount') || subject.toLowerCase().includes('promo')) ? 'Spam'
+                     : 'General';
+      const urgency: 'low' | 'medium' | 'high' = isPriority ? 'high' : 'low';
+      
+      const isSpanish = language === 'es';
+      const mapping: Record<string, string> = {
+        'Interview': 'Entrevista',
+        'Job Offer': 'Oferta de Trabajo',
+        'Reject': 'Rechazo',
+        'Spam': 'Spam',
+        'General': 'General'
+      };
+      const categoryText = isSpanish ? (mapping[category] || category) : category;
+      const summary = isSpanish
+        ? `[Respaldo de Emergencia] Analizado localmente. Categoría: ${categoryText}. Remitente: ${sender}.`
+        : `[Emergency Fallback] Analyzed locally. Category: ${category}. Sender: ${sender}.`;
+
       return {
-        isPriority: false,
-        category: 'General',
-        urgency: 'low',
-        summary: `Error during classification: ${(err as Error).message}. Sender: ${sender}`,
+        isPriority,
+        category,
+        urgency,
+        summary,
       };
     }
   }
@@ -338,8 +360,8 @@ Write your response in ${targetLang}. Be highly professional, direct, and concis
     } catch (err) {
       console.error('Error generating chat response:', err);
       return language === 'es' 
-        ? `Error al procesar la respuesta: ${(err as Error).message}`
-        : `Error generating response: ${(err as Error).message}`;
+        ? 'Lo siento, no pude procesar tu solicitud de chat debido a un límite de cuota o error temporal de la IA. Por favor, intenta de nuevo.'
+        : 'Sorry, I could not process your chat request right now due to a temporary quota limit or AI error. Please try again.';
     }
   }
 }

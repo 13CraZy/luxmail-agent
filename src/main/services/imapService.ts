@@ -252,32 +252,41 @@ export class ImapService {
 
     // Enter idle state to listen for real-time events
     while (this.connectionStatus === 'connected' && this.client) {
-      await this.client.idle();
+      try {
+        await this.client.idle();
+      } catch (idleErr) {
+        console.error('[IMAP] Connection idle state lost:', idleErr);
+        break;
+      }
     }
   }
 
   private async fetchMessage(sequenceNumber: number, isInitialScan: boolean = false) {
     if (!this.client) return;
 
-    // Fetch envelope (headers), body structure and text parts
-    const message = await this.client.fetchOne(sequenceNumber.toString(), {
-      envelope: true,
-      source: true,
-    });
+    try {
+      // Fetch envelope (headers), body structure and text parts
+      const message = await this.client.fetchOne(sequenceNumber.toString(), {
+        envelope: true,
+        source: true,
+      });
 
-    if (!message || !message.envelope) return;
+      if (!message || !message.envelope) return;
 
-    const fromList = message.envelope.from || [];
-    const sender = fromList.map(f => `${f.name || ''} <${f.address || ''}>`).join(', ');
-    const subject = message.envelope.subject || '(No Subject)';
-    const date = message.envelope.date || new Date();
-    
-    // Extract plain text body from raw email source
-    const rawSource = message.source ? message.source.toString() : '';
-    const body = this.cleanEmailBody(rawSource);
+      const fromList = message.envelope.from || [];
+      const sender = fromList.map(f => `${f.name || ''} <${f.address || ''}>`).join(', ');
+      const subject = message.envelope.subject || '(No Subject)';
+      const date = message.envelope.date || new Date();
+      
+      // Extract plain text body from raw email source
+      const rawSource = message.source ? message.source.toString() : '';
+      const body = this.cleanEmailBody(rawSource);
 
-    if (this.onNewEmailCallback) {
-      this.onNewEmailCallback({ sender, subject, body, date }, isInitialScan);
+      if (this.onNewEmailCallback) {
+        this.onNewEmailCallback({ sender, subject, body, date }, isInitialScan);
+      }
+    } catch (err) {
+      console.error(`[IMAP] Failed to fetch message sequence ${sequenceNumber}:`, err);
     }
   }
 
