@@ -1,0 +1,360 @@
+import { useState, useEffect, useRef } from 'react';
+import { Mail, Cpu, Settings, Terminal, ShieldAlert, CheckCircle, Wifi, RefreshCw } from 'lucide-react';
+import { AgentConfig, SystemStatus, MailLog, ConsoleLog, AIProvider } from '../shared/types';
+
+export default function App() {
+  // Configuration State
+  const [imapHost, setImapHost] = useState('imap.gmail.com');
+  const [imapPort, setImapPort] = useState(993);
+  const [imapUser, setImapUser] = useState('');
+  const [imapPass, setImapPass] = useState('');
+  const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
+  const [aiKey, setAiKey] = useState('');
+  const [whatsappEnabled, setWhatsappEnabled] = useState(true);
+  
+  // System State
+  const [status, setStatus] = useState<SystemStatus>({
+    imapConnected: false,
+    whatsappConnected: false,
+    aiConnected: false,
+  });
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [logs, setLogs] = useState<ConsoleLog[]>([
+    { timestamp: new Date().toLocaleTimeString(), level: 'info', message: 'LuxMail Agent UI initialized.' },
+    { timestamp: new Date().toLocaleTimeString(), level: 'warn', message: 'Credentials not configured. Please fill in configuration.' }
+  ]);
+  const [emails, setEmails] = useState<MailLog[]>([]);
+  const [activeTab, setActiveTab] = useState<'status' | 'settings'>('status');
+
+  const terminalEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll terminal to bottom
+  useEffect(() => {
+    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  // Mock connecting flow for preview
+  const handleSaveConfig = () => {
+    addLog('info', 'Saving configuration...');
+    // Simulated connection tests
+    setTimeout(() => {
+      setStatus({
+        imapConnected: true,
+        whatsappConnected: false,
+        aiConnected: true,
+      });
+      addLog('success', 'IMAP connection verified (imap.gmail.com:993).');
+      addLog('success', `AI Engine ready using ${aiProvider.toUpperCase()}.`);
+      setQrCode('MOCK_QR_CODE_DATA');
+      addLog('warn', 'WhatsApp connection pending. Scan QR code to link device.');
+    }, 1500);
+  };
+
+  const addLog = (level: ConsoleLog['level'], message: string) => {
+    setLogs(prev => [...prev, {
+      timestamp: new Date().toLocaleTimeString(),
+      level,
+      message
+    }]);
+  };
+
+  return (
+    <div className="h-screen w-screen flex flex-col bg-background text-white font-sans overflow-hidden">
+      {/* 1. Header (Apple-like Navigation) */}
+      <header className="h-16 shrink-0 border-b border-card-border px-6 flex justify-between items-center bg-[rgba(3,3,5,0.8)] backdrop-blur-md z-20">
+        <div className="flex items-center gap-2.5">
+          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-accent-purple to-accent-amber flex items-center justify-center font-bold text-xs select-none text-black">
+            LM
+          </div>
+          <div>
+            <h1 className="text-sm font-bold tracking-tight select-none">luxmail<span className="text-accent-amber">.</span>agent</h1>
+            <p className="text-[10px] text-muted tracking-wider select-none uppercase">v1.0.0 // LOCAL ONLY</p>
+          </div>
+        </div>
+
+        {/* Global Connection Badges */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className={`relative flex h-2 w-2`}>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.imapConnected ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${status.imapConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            </span>
+            <span className="text-[10px] font-mono text-muted select-none uppercase">IMAP</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className={`relative flex h-2 w-2`}>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.whatsappConnected ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${status.whatsappConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            </span>
+            <span className="text-[10px] font-mono text-muted select-none uppercase">WA</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className={`relative flex h-2 w-2`}>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.aiConnected ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${status.aiConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            </span>
+            <span className="text-[10px] font-mono text-muted select-none uppercase">AI</span>
+          </div>
+        </div>
+      </header>
+
+      {/* 2. Main Workspace */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Left Side Pane: Navigation & Configurations */}
+        <div className="w-[320px] shrink-0 border-r border-card-border bg-[#050508] p-5 flex flex-col gap-4 overflow-y-auto">
+          {/* Tab Selection */}
+          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[rgba(255,255,255,0.03)] border border-card-border">
+            <button
+              onClick={() => setActiveTab('status')}
+              className={`py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${activeTab === 'status' ? 'bg-[rgba(255,255,255,0.08)] text-white shadow-sm' : 'text-muted hover:text-white'}`}
+            >
+              Status
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${activeTab === 'settings' ? 'bg-[rgba(255,255,255,0.08)] text-white shadow-sm' : 'text-muted hover:text-white'}`}
+            >
+              Settings
+            </button>
+          </div>
+
+          {activeTab === 'settings' ? (
+            <div className="flex flex-col gap-4">
+              {/* IMAP Config Form */}
+              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-3.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-accent-purple select-none">
+                  <Mail size={14} />
+                  <span>IMAP MAILBOX</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">Host / Port</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={imapHost}
+                      onChange={e => setImapHost(e.target.value)}
+                      className="flex-1 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
+                    />
+                    <input
+                      type="number"
+                      value={imapPort}
+                      onChange={e => setImapPort(Number(e.target.value))}
+                      className="w-16 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2 py-1.5 text-xs text-white text-center focus:outline-none focus:border-accent-purple"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">Email Address</label>
+                  <input
+                    type="email"
+                    value={imapUser}
+                    onChange={e => setImapUser(e.target.value)}
+                    placeholder="user@gmail.com"
+                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">App Password</label>
+                  <input
+                    type="password"
+                    value={imapPass}
+                    onChange={e => setImapPass(e.target.value)}
+                    placeholder="•••• •••• •••• ••••"
+                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
+                  />
+                </div>
+              </div>
+
+              {/* AI Config Form */}
+              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-3.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-accent-amber select-none">
+                  <Cpu size={14} />
+                  <span>AI ENGINE</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">Provider</label>
+                  <select
+                    value={aiProvider}
+                    onChange={e => setAiProvider(e.target.value as AIProvider)}
+                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber"
+                  >
+                    <option value="gemini" className="bg-card">Google Gemini (Recommended)</option>
+                    <option value="deepseek" className="bg-card">DeepSeek API</option>
+                    <option value="openai" className="bg-card">OpenAI GPT</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">API Key</label>
+                  <input
+                    type="password"
+                    value={aiKey}
+                    onChange={e => setAiKey(e.target.value)}
+                    placeholder="sk-••••••••••••••••"
+                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber"
+                  />
+                </div>
+              </div>
+
+              {/* WhatsApp Activation Toggle */}
+              <div className="p-4 rounded-2xl bg-card border border-card-border flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold select-none text-emerald-400">WhatsApp Alerting</span>
+                  <span className="text-[9px] text-muted">Forwards priority emails</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={whatsappEnabled}
+                    onChange={() => setWhatsappEnabled(!whatsappEnabled)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              {/* Save Config Button */}
+              <button
+                onClick={handleSaveConfig}
+                className="w-full py-2.5 rounded-xl bg-foreground text-background text-xs font-bold hover:bg-neutral-200 transition-all select-none"
+              >
+                Apply & Start Agent
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {/* WhatsApp QR Panel */}
+              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col items-center justify-center text-center gap-3.5">
+                <div className="w-full flex items-center justify-between text-xs font-bold text-emerald-400 select-none">
+                  <span>WHATSAPP CONSOLE</span>
+                  <span className="text-[9px] font-mono bg-[rgba(16,185,129,0.1)] px-2 py-0.5 rounded border border-[rgba(16,185,129,0.2)]">
+                    {status.whatsappConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                  </span>
+                </div>
+
+                {qrCode ? (
+                  <div className="bg-white p-3.5 rounded-xl flex items-center justify-center shadow-lg my-1 select-none">
+                    {/* Simulated visual QR box */}
+                    <div className="h-40 w-40 bg-zinc-100 border border-zinc-200 flex flex-col items-center justify-center p-2 rounded-lg gap-2 text-black">
+                      <span className="font-bold text-xs tracking-tighter text-center">SCAN WITH WHATSAPP</span>
+                      <div className="h-24 w-24 border-4 border-black border-dashed flex items-center justify-center">
+                        <RefreshCw size={24} className="animate-spin text-zinc-400" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-44 w-full rounded-xl bg-[rgba(255,255,255,0.01)] border border-dashed border-card-border flex flex-col items-center justify-center text-center p-4">
+                    <Wifi size={24} className="text-muted mb-2 animate-pulse" />
+                    <span className="text-[10px] font-bold text-muted uppercase">Waiting for engine start</span>
+                  </div>
+                )}
+                <p className="text-[9px] text-muted leading-relaxed">
+                  Headless browser automation simulates a web client locally. Scan once, and your agent will run continuously.
+                </p>
+              </div>
+
+              {/* Running Status Metadata */}
+              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-2.5 text-xs">
+                <div className="font-bold text-[10px] tracking-widest text-muted uppercase select-none">System Telemetry</div>
+                <div className="flex justify-between font-mono text-[10px]">
+                  <span className="text-muted">MEMORY USAGE</span>
+                  <span className="font-bold text-white">42.8 MB</span>
+                </div>
+                <div className="flex justify-between font-mono text-[10px]">
+                  <span className="text-muted">POLL INTERVAL</span>
+                  <span className="font-bold text-accent-purple">60 SECONDS</span>
+                </div>
+                <div className="flex justify-between font-mono text-[10px]">
+                  <span className="text-muted">ALERTS FORWARDED</span>
+                  <span className="font-bold text-accent-amber">0 MSG</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Side Pane: Console & Extracted Emails */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-background p-5 gap-4">
+          {/* Main Dashboard view */}
+          <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+            {/* Top Widget: Parsed Emails Log Grid */}
+            <div className="flex-1 border border-card-border rounded-2xl bg-card overflow-hidden flex flex-col">
+              <div className="px-4 py-3.5 border-b border-card-border flex justify-between items-center bg-[rgba(255,255,255,0.01)]">
+                <div className="flex items-center gap-2 text-xs font-bold text-white select-none">
+                  <Mail size={14} className="text-accent-purple" />
+                  <span>CLASSIFIED INBOX TRACKER</span>
+                </div>
+                <span className="text-[9px] font-mono text-muted">SHOWING RECENT POLLED EMAILS</span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                {emails.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 select-none">
+                    <CheckCircle size={28} className="text-emerald-500/70 mb-2.5" />
+                    <h3 className="text-xs font-bold tracking-tight text-white mb-0.5">Inbox Fully Secure</h3>
+                    <p className="text-[10px] text-muted max-w-[280px] leading-relaxed">
+                      No matching priority emails detected. The agent will process new unread emails as they hit the server.
+                    </p>
+                  </div>
+                ) : (
+                  emails.map(email => (
+                    <div
+                      key={email.id}
+                      className={`p-3.5 rounded-xl border ${email.urgency === 'high' ? 'border-[rgba(226,62,62,0.2)] bg-[rgba(226,62,62,0.02)]' : 'border-card-border bg-[rgba(255,255,255,0.01)]'} flex flex-col gap-2 transition-all duration-300`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${email.urgency === 'high' ? 'bg-[rgba(226,62,62,0.15)] text-accent-cherry border border-[rgba(226,62,62,0.2)]' : 'bg-neutral-800 text-muted'}`}>
+                            {email.category}
+                          </span>
+                          <span className="text-[10px] text-muted font-mono">{email.timestamp}</span>
+                        </div>
+                        {email.notified && (
+                          <span className="text-[9px] text-emerald-400 font-bold bg-[rgba(16,185,129,0.1)] px-1.5 py-0.5 rounded flex items-center gap-1 select-none">
+                            FORWARDED TO WA
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <h4 className="text-xs font-bold text-white">{email.subject}</h4>
+                        <p className="text-[10px] text-muted font-mono">FROM: {email.sender}</p>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-muted bg-[rgba(0,0,0,0.2)] p-2 rounded border border-card-border">
+                        {email.summary}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Widget: Live Output Console */}
+            <div className="h-[200px] border border-card-border rounded-2xl bg-black overflow-hidden flex flex-col font-mono">
+              <div className="px-4 py-2 border-b border-card-border flex justify-between items-center bg-[rgba(255,255,255,0.02)]">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-muted select-none">
+                  <Terminal size={12} />
+                  <span>LOCAL SYSTEM CONSOLE</span>
+                </div>
+                <span className="text-[8px] tracking-widest text-muted uppercase">REAL-TIME DATASTREAM</span>
+              </div>
+
+              <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-1.5 text-[10px] leading-relaxed">
+                {logs.map((log, idx) => (
+                  <div key={idx} className="flex gap-2 items-start">
+                    <span className="text-muted shrink-0 select-none">[{log.timestamp}]</span>
+                    <span className={`shrink-0 select-none ${log.level === 'error' ? 'text-accent-cherry font-bold' : log.level === 'warn' ? 'text-accent-amber font-bold' : log.level === 'success' ? 'text-emerald-400 font-bold' : 'text-sky-400'}`}>
+                      {log.level.toUpperCase()}:
+                    </span>
+                    <span className="text-neutral-300 select-text">{log.message}</span>
+                  </div>
+                ))}
+                <div ref={terminalEndRef} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

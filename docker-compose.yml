@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  luxmail-agent:
+    build: .
+    container_name: luxmail-agent
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # Mount configuration files and logs locally to persist session authentications
+      - ./data:/usr/src/app/data
+      - ./.wwebjs_auth:/usr/src/app/.wwebjs_auth
+      - ./.wwebjs_cache:/usr/src/app/.wwebjs_cache
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
