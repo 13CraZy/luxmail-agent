@@ -1055,26 +1055,48 @@ export default function App() {
 
                   {/* Message History */}
                   <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3.5 min-h-0">
-                    {chatMessages.map((msg, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex flex-col max-w-[85%] ${msg.sender === 'user' ? 'self-end items-end' : 'self-start items-start'}`}
-                      >
+                    {chatMessages.map((msg, idx) => {
+                      // Detect category keyword to style agent message bubble
+                      let bubbleBorder = 'border-zinc-800/50';
+                      let bubbleShadow = '';
+                      if (msg.sender === 'agent') {
+                        const txt = msg.text.toLowerCase();
+                        if (txt.includes('entrevista') || txt.includes('interview')) {
+                          bubbleBorder = 'border-accent-purple/40';
+                          bubbleShadow = 'shadow-[0_0_12px_rgba(99,102,241,0.08)]';
+                        } else if (txt.includes('oferta') || txt.includes('offer')) {
+                          bubbleBorder = 'border-emerald-500/40';
+                          bubbleShadow = 'shadow-[0_0_12px_rgba(16,185,129,0.08)]';
+                        } else if (txt.includes('rechazo') || txt.includes('reject') || txt.includes('rejection')) {
+                          bubbleBorder = 'border-accent-cherry/40';
+                          bubbleShadow = 'shadow-[0_0_12px_rgba(226,62,62,0.08)]';
+                        } else if (txt.includes('spam')) {
+                          bubbleBorder = 'border-accent-amber/40';
+                          bubbleShadow = 'shadow-[0_0_12px_rgba(223,184,108,0.08)]';
+                        }
+                      }
+
+                      return (
                         <div
-                          className={`p-3.5 rounded-3xl text-xs leading-relaxed break-words select-text ${
-                            msg.sender === 'user'
-                              ? 'bg-gradient-to-br from-accent-purple to-accent-purple/80 text-white rounded-br-none shadow-[0_4px_12px_rgba(139,92,246,0.15)]'
-                              : 'bg-zinc-900/30 border border-zinc-800/50 text-neutral-200 rounded-bl-none'
-                          }`}
+                          key={idx}
+                          className={`flex flex-col max-w-[85%] ${msg.sender === 'user' ? 'self-end items-end' : 'self-start items-start'}`}
                         >
-                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                          <div
+                            className={`p-3.5 rounded-3xl text-xs leading-relaxed break-words select-text ${
+                              msg.sender === 'user'
+                                ? 'bg-gradient-to-br from-accent-purple to-accent-purple/80 text-white rounded-br-none shadow-[0_4px_12px_rgba(139,92,246,0.15)]'
+                                : `bg-zinc-900/30 border ${bubbleBorder} ${bubbleShadow} text-neutral-200 rounded-bl-none`
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap">{msg.text}</p>
+                          </div>
+                          <span className="text-[8px] text-zinc-500 font-mono mt-1 px-1.5 select-none">{msg.timestamp}</span>
                         </div>
-                        <span className="text-[8px] text-zinc-500 font-mono mt-1 px-1.5 select-none">{msg.timestamp}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div ref={chatEndRef} />
                   </div>
-
+ 
                   {/* Quick Search Chips */}
                   <div className="px-5 py-3 border-t border-zinc-900 bg-zinc-950/20 select-none">
                     <div className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest mb-1.5">{t('quickActions')}</div>
@@ -1082,21 +1104,21 @@ export default function App() {
                       <button
                         onClick={() => handleSendChatMessage(language === 'es' ? 'Buscar correos de hoy' : "Search today's emails")}
                         disabled={isChatSending || !status.aiConnected || !status.imapConnected}
-                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-zinc-800/60 text-[9px] text-neutral-300 hover:bg-zinc-800/40 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-zinc-800/40 text-[9px] text-neutral-300 hover:border-zinc-500/80 hover:bg-zinc-800/40 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {t('quickSearchToday')}
                       </button>
                       <button
                         onClick={() => handleSendChatMessage(language === 'es' ? 'Buscar entrevistas de esta semana' : 'Search interview calls this week')}
                         disabled={isChatSending || !status.aiConnected || !status.imapConnected}
-                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-zinc-800/60 text-[9px] text-neutral-300 hover:bg-zinc-800/40 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-accent-purple/40 text-[9px] text-neutral-300 hover:border-accent-purple/80 hover:bg-accent-purple/5 hover:text-white hover:shadow-[0_0_8px_rgba(99,102,241,0.2)] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {t('quickSearchInterview')}
                       </button>
                       <button
                         onClick={() => handleSendChatMessage(language === 'es' ? 'Buscar correos de Alan' : 'Search emails from Alan')}
                         disabled={isChatSending || !status.aiConnected || !status.imapConnected}
-                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-zinc-800/60 text-[9px] text-neutral-300 hover:bg-zinc-800/40 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-emerald-500/40 text-[9px] text-neutral-300 hover:border-emerald-500/80 hover:bg-emerald-500/5 hover:text-white hover:shadow-[0_0_8px_rgba(16,185,129,0.2)] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {t('quickSearchFromAlan')}
                       </button>
@@ -1141,37 +1163,74 @@ export default function App() {
                       </p>
                     </div>
                   ) : (
-                    emails.map(email => (
-                      <div
-                        key={email.id}
-                        className={`p-4 rounded-2xl border ${email.urgency === 'high' ? 'border-rose-500/20 bg-rose-500/5' : 'border-zinc-800/40 bg-zinc-900/10'} flex flex-col gap-2.5 transition-all duration-300`}
-                      >
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider ${email.urgency === 'high' ? 'bg-rose-500/15 text-accent-cherry border border-rose-500/20' : 'bg-zinc-900/30 border border-zinc-800/60 text-zinc-400'}`}>
-                              {translateCategory(email.category)}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 font-mono">{email.timestamp}</span>
+                    emails.map(email => {
+                      const categoryStyles: Record<string, { border: string; bg: string; text: string; badge: string }> = {
+                        'Interview': {
+                          border: 'border-accent-purple/35',
+                          bg: 'bg-accent-purple/5',
+                          text: 'text-purple-300',
+                          badge: 'bg-accent-purple/15 text-purple-300 border border-accent-purple/20'
+                        },
+                        'Job Offer': {
+                          border: 'border-emerald-500/35',
+                          bg: 'bg-emerald-500/5',
+                          text: 'text-emerald-300',
+                          badge: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20'
+                        },
+                        'Reject': {
+                          border: 'border-accent-cherry/35',
+                          bg: 'bg-[#e23e3e]/5',
+                          text: 'text-rose-300',
+                          badge: 'bg-[#e23e3e]/15 text-rose-300 border border-[#e23e3e]/20'
+                        },
+                        'Spam': {
+                          border: 'border-accent-amber/20',
+                          bg: 'bg-accent-amber/5',
+                          text: 'text-accent-amber/80',
+                          badge: 'bg-accent-amber/10 text-accent-amber/80 border border-accent-amber/15'
+                        },
+                        'General': {
+                          border: 'border-zinc-800',
+                          bg: 'bg-zinc-900/10',
+                          text: 'text-zinc-400',
+                          badge: 'bg-zinc-900/30 border border-zinc-800/60 text-zinc-400'
+                        }
+                      };
+
+                      const style = categoryStyles[email.category] || categoryStyles['General'];
+
+                      return (
+                        <div
+                          key={email.id}
+                          className={`p-4 rounded-2xl border ${style.border} ${style.bg} flex flex-col gap-2.5 transition-all duration-300`}
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider ${style.badge}`}>
+                                {translateCategory(email.category)}
+                              </span>
+                              <span className="text-[10px] text-zinc-500 font-mono">{email.timestamp}</span>
+                            </div>
+                            {email.notified ? (
+                              <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
+                                {t('forwardedToWa')}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] text-zinc-500 font-medium bg-zinc-900/50 border border-zinc-800/50 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
+                                {t('noAlertsSent')}
+                              </span>
+                            )}
                           </div>
-                          {email.notified ? (
-                            <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
-                              {t('forwardedToWa')}
-                            </span>
-                          ) : (
-                            <span className="text-[9px] text-zinc-500 font-medium bg-zinc-900/50 border border-zinc-800/50 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
-                              {t('noAlertsSent')}
-                            </span>
-                          )}
+                          <div className="flex flex-col gap-0.5">
+                            <h4 className="text-xs font-bold text-white">{email.subject}</h4>
+                            <p className="text-[10px] text-zinc-500 font-mono select-all">FROM: {email.sender}</p>
+                          </div>
+                          <p className={`text-[10px] leading-relaxed select-text bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl ${style.text}`}>
+                            {email.summary}
+                          </p>
                         </div>
-                        <div className="flex flex-col gap-0.5">
-                          <h4 className="text-xs font-bold text-white">{email.subject}</h4>
-                          <p className="text-[10px] text-zinc-500 font-mono select-all">FROM: {email.sender}</p>
-                        </div>
-                        <p className="text-[10px] leading-relaxed text-neutral-300 bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl select-text">
-                          {email.summary}
-                        </p>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
