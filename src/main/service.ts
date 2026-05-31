@@ -3,10 +3,12 @@ import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import fs from 'fs';
+import { exec } from 'child_process';
 import { ImapService } from './services/imapService';
 import { AIService, ClassificationResult } from './services/aiService';
 import { WhatsappService } from './services/whatsappService';
 import { AgentConfig, SystemStatus, MailLog, ConsoleLog } from '../shared/types';
+
 
 function translateCategory(category: string, lang: 'en' | 'es'): string {
   if (lang !== 'es') return category;
@@ -160,6 +162,50 @@ app.get('/api/logs', (_req, res) => {
   res.json({ emails: emailLogs, console: consoleLogs });
 });
 
+app.post('/api/chat', async (req, res) => {
+  const { message } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: 'Missing message in request body.' });
+  }
+
+  const isSpanish = config?.language === 'es';
+
+  try {
+    if (!aiService) {
+      return res.status(503).json({
+        error: isSpanish 
+          ? 'El motor de IA está fuera de línea. Configura una Llave de API válida en Ajustes.' 
+          : 'AI Engine is offline. Please configure a valid API key in Settings.'
+      });
+    }
+
+    if (!imapService || !imapService.getStatus()) {
+      return res.status(503).json({
+        error: isSpanish
+          ? 'El monitor de correo IMAP está fuera de línea. Por favor conecta tu buzón primero.'
+          : 'IMAP mail monitor is offline. Please connect your mailbox first.'
+      });
+    }
+
+    const todayDate = new Date().toISOString().split('T')[0];
+    addConsoleLog('info', `Translating chat request: "${message}"`);
+    const criteria = await aiService.translateChatQueryToSearchCriteria(message, todayDate);
+    addConsoleLog('info', `IMAP search filters generated: ${JSON.stringify(criteria)}`);
+
+    addConsoleLog('info', 'Executing IMAP search on INBOX...');
+    const searchResults = await imapService.searchEmails(criteria);
+    addConsoleLog('success', `IMAP search completed. Found ${searchResults.length} matching messages.`);
+
+    addConsoleLog('info', 'Generating AI analysis response...');
+    const responseText = await aiService.generateChatResponse(message, searchResults, config?.language || 'en');
+    
+    res.json({ response: responseText });
+  } catch (err) {
+    addConsoleLog('error', `Error during chat processing: ${(err as Error).message}`);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // Endpoint to simulate incoming emails for testing purposes
 app.post('/api/test/inject-email', async (req, res) => {
   const { sender, subject, body } = req.body;
@@ -236,6 +282,41 @@ app.post('/api/test/inject-email', async (req, res) => {
   }
 });
 
+function killZombieChromium(): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      resolve();
+      return;
+    }
+    const normalizedPath = path.resolve(DATA_DIR, 'auth/session').replace(/\\/g, '*').replace(/\//g, '*');
+    const command = `powershell -Command "Get-CimInstance Win32_Process -Filter 'Name = ''chrome.exe''' | Where-Object CommandLine -like '*${normalizedPath}*' | Remove-CimInstance"`;
+    
+    exec(command, (err) => {
+      if (err) {
+        console.log(`[INFO] Zombie cleanup finished: ${err.message}`);
+      } else {
+        console.log('[SUCCESS] Zombie Chromium processes cleaned up.');
+      }
+      resolve();
+    });
+  });
+}
+
+export async function shutdownServices() {
+  if (imapService) {
+    try {
+      await imapService.disconnect();
+    } catch (e) {}
+    imapService = null;
+  }
+  if (whatsappService) {
+    try {
+      await whatsappService.destroy();
+    } catch (e) {}
+    whatsappService = null;
+  }
+}
+
 async function restartServices() {
   // Clear logs history on service restart to keep UI and logs aligned
   emailLogs.length = 0;
@@ -246,9 +327,27 @@ async function restartServices() {
 
   // 1. Disconnect any existing IMAP instances
   if (imapService) {
-    await imapService.disconnect();
+    try {
+      await imapService.disconnect();
+    } catch (err) {
+      addConsoleLog('error', `Error disconnecting IMAP: ${(err as Error).message}`);
+    }
     imapService = null;
   }
+
+  // 2. Shut down previous WhatsApp service if it exists to release the browser lock
+  if (whatsappService) {
+    try {
+      addConsoleLog('info', 'Stopping previous WhatsApp engine...');
+      await whatsappService.destroy();
+    } catch (err) {
+      addConsoleLog('error', `Error destroying WhatsApp service: ${(err as Error).message}`);
+    }
+    whatsappService = null;
+  }
+
+  // 3. Clean up any remaining zombie Chrome processes holding the folder lock
+  await killZombieChromium();
 
   if (!config) return;
   const currentLanguage = config.language || 'en';
@@ -265,7 +364,8 @@ async function restartServices() {
 
   // 3. Initialize WhatsApp Automation
   if (config.whatsappEnabled) {
-    whatsappService = new WhatsappService();
+    const absoluteAuthPath = path.resolve(DATA_DIR, 'auth');
+    whatsappService = new WhatsappService(absoluteAuthPath);
     whatsappService.onQr((qr) => {
       activeQr = qr;
       broadcast({ type: 'qr', qr });
@@ -318,15 +418,31 @@ async function restartServices() {
 
     addConsoleLog('info', `AI Classification: [Category: ${result.category}] [Priority: ${result.isPriority}] [Urgency: ${result.urgency}]`);
 
-    // Forward WhatsApp alerts if email meets priority threshold
-    if (result.isPriority && config?.whatsappEnabled && whatsappService) {
+    // Evaluate if WhatsApp notification should be sent based on natural language rules
+    let shouldNotify = result.isPriority;
+    if (aiService && config?.notificationRules) {
+      addConsoleLog('info', 'Evaluating custom notification rules with AI...');
+      shouldNotify = await aiService.shouldNotifyUser(
+        email.sender,
+        email.subject,
+        result.summary,
+        result.category,
+        result.urgency,
+        result.isPriority,
+        config.notificationRules
+      );
+      addConsoleLog('info', `Custom notification rules result: shouldNotify = ${shouldNotify}`);
+    }
+
+    // Forward WhatsApp alerts if email meets priority/custom rules threshold
+    if (shouldNotify && config?.whatsappEnabled && whatsappService) {
       const isSpanish = currentLanguage === 'es';
       const alertMessage = isSpanish
         ? `📬 *Alerta de LuxMail*\n\n*De:* ${email.sender}\n*Asunto:* ${email.subject}\n*Resumen:* ${result.summary}\n\n_Clasificación: ${translateCategory(result.category, 'es')} (prioridad ${translateUrgency(result.urgency, 'es')})_`
         : `📬 *LuxMail Alert*\n\n*From:* ${email.sender}\n*Subject:* ${email.subject}\n*Summary:* ${result.summary}\n\n_Classification: ${result.category} (${result.urgency} priority)_`;
       try {
         // Send to self (using registered phone number from config or environment)
-        const targetPhone = process.env.NOTIFICATION_PHONE || config.imap.user; 
+        const targetPhone = config.notificationPhone || process.env.NOTIFICATION_PHONE || config.imap.user; 
         addConsoleLog('info', `Forwarding WhatsApp alert to ${targetPhone}...`);
         await whatsappService.sendMessage(targetPhone, alertMessage);
         mailLog.notified = true;

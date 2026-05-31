@@ -17,5 +17,12 @@ export default defineConfig({
   },
   server: {
     port: 5172,
+    watch: {
+      ignored: [
+        '**/data/**',
+        '**/.wwebjs_cache/**',
+        '**/dist/**',
+      ]
+    }
   },
 });

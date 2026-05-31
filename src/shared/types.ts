@@ -24,6 +24,8 @@ export interface AgentConfig {
   telegramChatId?: string;
   urgencyThreshold: 'low' | 'medium' | 'high';
   language?: 'en' | 'es';
+  notificationRules?: string;
+  notificationPhone?: string;
 }
 
 export interface SystemStatus {

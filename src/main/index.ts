@@ -1,8 +1,9 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
 
-// Import the background service daemon to boot it up inside Electron
-import './service';
+// Import the background service daemon and its shutdown helper
+import { shutdownServices } from './service';
+
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -45,6 +46,21 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+let isQuitting = false;
+
+app.on('before-quit', async (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    isQuitting = true;
+    try {
+      await shutdownServices();
+    } catch (err) {
+      console.error('Error shutting down services on quit:', err);
+    }
+    app.quit();
+  }
 });
 
 app.on('window-all-closed', () => {

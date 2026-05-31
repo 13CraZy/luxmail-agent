@@ -53,6 +53,93 @@ export class ImapService {
     this.client = null;
   }
 
+  public async searchEmails(criteria: {
+    since?: string;
+    before?: string;
+    from?: string;
+    subject?: string;
+    body?: string;
+    keywords?: string[];
+  }): Promise<{ sender: string; subject: string; date: string; bodySummary: string }[]> {
+    if (!this.client || !this.isConnected) {
+      throw new Error('IMAP monitor is offline. Please check your credentials and retry.');
+    }
+
+    // Verify inbox is open
+    if (!this.client.mailbox) {
+      await this.client.mailboxOpen('INBOX', { readOnly: true });
+    }
+
+    let sequenceNumbers: number[] = [];
+
+    if (criteria.keywords && criteria.keywords.length > 0) {
+      const allSeqsMap = new Map<number, number>();
+      for (const kw of criteria.keywords) {
+        const query: any = {};
+        if (criteria.since) query.since = new Date(criteria.since);
+        if (criteria.before) query.before = new Date(criteria.before);
+        if (criteria.from) query.from = criteria.from;
+
+        // Search in body
+        const bodyQuery = { ...query, body: kw };
+        const bodySeqs = await this.client.search(bodyQuery);
+        for (const s of bodySeqs || []) {
+          allSeqsMap.set(s, s);
+        }
+
+        // Search in subject
+        const subjectQuery = { ...query, subject: kw };
+        const subjSeqs = await this.client.search(subjectQuery);
+        for (const s of subjSeqs || []) {
+          allSeqsMap.set(s, s);
+        }
+      }
+      // Sort sequence numbers ascending
+      sequenceNumbers = Array.from(allSeqsMap.keys()).sort((a, b) => a - b);
+    } else {
+      const query: any = {};
+      if (criteria.since) query.since = new Date(criteria.since);
+      if (criteria.before) query.before = new Date(criteria.before);
+      if (criteria.from) query.from = criteria.from;
+      if (criteria.subject) query.subject = criteria.subject;
+      if (criteria.body) query.body = criteria.body;
+
+      const seqs = await this.client.search(query);
+      sequenceNumbers = seqs || [];
+    }
+
+    if (!sequenceNumbers || sequenceNumbers.length === 0) return [];
+    
+    // Retrieve up to 20 emails (newest first, since they are ordered ascending, we slice the last 20)
+    const maxResults = 20;
+    const targetSeqs = sequenceNumbers.slice(-maxResults);
+    
+    const results = [];
+    for (const seq of targetSeqs) {
+      try {
+        const msg = await this.client.fetchOne(seq.toString(), {
+          envelope: true,
+          source: true,
+        });
+        if (msg && msg.envelope) {
+          const fromList = msg.envelope.from || [];
+          const sender = fromList.map(f => `${f.name || ''} <${f.address || ''}>`).join(', ');
+          const subject = msg.envelope.subject || '(No Subject)';
+          const date = msg.envelope.date ? msg.envelope.date.toISOString() : new Date().toISOString();
+          
+          const rawSource = msg.source ? msg.source.toString() : '';
+          const bodySummary = this.cleanEmailBody(rawSource).substring(0, 500);
+          
+          results.push({ sender, subject, date, bodySummary });
+        }
+      } catch (err) {
+        console.error(`Failed to fetch sequence ${seq}:`, err);
+      }
+    }
+    
+    return results;
+  }
+
   private async startListening() {
     if (!this.client) return;
 

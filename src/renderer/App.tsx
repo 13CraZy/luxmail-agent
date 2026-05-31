@@ -45,6 +45,23 @@ const translations = {
     waBadge: 'WA',
     aiBadge: 'AI',
     loading: 'Loading configuration...',
+    chatTab: 'AI Assistant',
+    inboxTab: 'Inbox Tracker',
+    chatTitle: 'LUXMAIL AI ASSISTANT',
+    chatSub: 'ZERO-TRUST EMAIL CHATBOT',
+    chatPlaceholder: 'Ask about your emails (e.g., "emails from Alan yesterday")...',
+    chatSend: 'Send',
+    chatWarningOffline: 'AI Engine or IMAP connection is offline. Connect them in Settings first.',
+    aiModelLabel: 'AI Model',
+    aiModelPlaceholder: 'gemini-2.5-flash, gemini-2.5-pro, gpt-4o, etc.',
+    notificationRulesLabel: 'Notification Rules (Natural Language)',
+    notificationRulesPlaceholder: 'e.g., Only alert me if the email is about interviews, job offers, or urgent messages from Alan.',
+    notificationPhoneLabel: 'WhatsApp Phone Number',
+    notificationPhonePlaceholder: 'e.g., +526461234567',
+    quickActions: 'Quick Search Suggestions',
+    quickSearchToday: "Search today's emails",
+    quickSearchInterview: "Search interview calls this week",
+    quickSearchFromAlan: "Search emails from Alan",
   },
   es: {
     title: 'luxmail.agent',
@@ -88,6 +105,23 @@ const translations = {
     waBadge: 'WA',
     aiBadge: 'IA',
     loading: 'Cargando configuración...',
+    chatTab: 'Asistente de IA',
+    inboxTab: 'Buzón Clasificado',
+    chatTitle: 'ASISTENTE DE IA LUXMAIL',
+    chatSub: 'CHATBOT DE CORREO ZERO-TRUST',
+    chatPlaceholder: 'Pregunta sobre tus correos (ej. "correos de Alan de ayer")...',
+    chatSend: 'Enviar',
+    chatWarningOffline: 'El motor de IA o la conexión IMAP están fuera de línea. Conéctalos en Ajustes primero.',
+    aiModelLabel: 'Modelo de IA',
+    aiModelPlaceholder: 'gemini-2.5-flash, gemini-2.5-pro, gpt-4o, etc.',
+    notificationRulesLabel: 'Reglas de Notificación (Lenguaje Natural)',
+    notificationRulesPlaceholder: 'ej. Solo avísame si el correo es sobre entrevistas, ofertas de trabajo o mensajes urgentes de Alan.',
+    notificationPhoneLabel: 'Número de WhatsApp',
+    notificationPhonePlaceholder: 'ej. +526461234567',
+    quickActions: 'Sugerencias de Búsqueda Rápida',
+    quickSearchToday: "Buscar correos de hoy",
+    quickSearchInterview: "Buscar entrevistas de esta semana",
+    quickSearchFromAlan: "Buscar correos de Alan",
   }
 };
 
@@ -100,7 +134,10 @@ export default function App() {
   const [imapPass, setImapPass] = useState('');
   const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
   const [aiKey, setAiKey] = useState('');
+  const [aiModel, setAiModel] = useState('');
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
+  const [notificationRules, setNotificationRules] = useState('');
+  const [notificationPhone, setNotificationPhone] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSavedCheck, setShowSavedCheck] = useState(false);
   
@@ -118,6 +155,33 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'status' | 'settings'>('status');
 
   const terminalEndRef = useRef<HTMLDivElement>(null);
+
+  // Chat State
+  const [rightTab, setRightTab] = useState<'inbox' | 'chat'>('inbox');
+  const [chatMessages, setChatMessages] = useState<{ sender: 'user' | 'agent'; text: string; timestamp: string }[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatSending, setIsChatSending] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Initialize chat greeting on language change
+  useEffect(() => {
+    if (chatMessages.length === 0 || (chatMessages.length === 1 && chatMessages[0].sender === 'agent')) {
+      setChatMessages([
+        {
+          sender: 'agent',
+          text: language === 'es' 
+            ? 'Hola. Soy tu Asistente de IA. Puedo buscar y analizar los correos de tu buzón IMAP local de forma privada. ¿En qué correo en específico te gustaría que me enfoque hoy?' 
+            : 'Hello. I am your AI Assistant. I can search and analyze emails from your local IMAP mailbox privately. Which specific email would you like me to check today?',
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    }
+  }, [language]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   // Auto-resolve API and WS URLs for development and production containers
   const isDevPort = window.location.port === '5172' || window.location.port === '5173';
@@ -173,11 +237,14 @@ export default function App() {
         if (data.ai) {
           setAiProvider(data.ai.provider);
           setAiKey(data.ai.apiKeyHex);
+          setAiModel(data.ai.modelName || '');
         }
         setWhatsappEnabled(data.whatsappEnabled);
         if (data.language) {
           setLanguage(data.language);
         }
+        setNotificationRules(data.notificationRules || '');
+        setNotificationPhone(data.notificationPhone || '');
         addLog('success', 'Loaded configuration from backend daemon storage.');
       })
       .catch(() => {
@@ -257,11 +324,14 @@ export default function App() {
       ai: {
         provider: aiProvider,
         apiKeyHex: aiKey,
+        modelName: aiModel.trim() || undefined,
       },
       whatsappEnabled,
       telegramEnabled: false,
       urgencyThreshold: 'medium',
       language,
+      notificationRules: notificationRules.trim() || undefined,
+      notificationPhone: notificationPhone.trim() || undefined,
     };
 
     try {
@@ -283,6 +353,53 @@ export default function App() {
       addConsoleLog('error', `Failed to deliver configuration: ${(err as Error).message}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSendChatMessage = async (overrideMessage?: string) => {
+    const textToSend = overrideMessage || chatInput;
+    if (!textToSend.trim() || isChatSending) return;
+
+    const userMsg = {
+      sender: 'user' as const,
+      text: textToSend,
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    setChatMessages(prev => [...prev, userMsg]);
+    if (!overrideMessage) setChatInput('');
+    setIsChatSending(true);
+
+    try {
+      const response = await fetch(`${apiBase}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: textToSend }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setChatMessages(prev => [...prev, {
+          sender: 'agent',
+          text: data.response,
+          timestamp: new Date().toLocaleTimeString()
+        }]);
+      } else {
+        setChatMessages(prev => [...prev, {
+          sender: 'agent',
+          text: data.error || (language === 'es' ? 'Ocurrió un error inesperado al procesar tu solicitud.' : 'An unexpected error occurred while processing your request.'),
+          timestamp: new Date().toLocaleTimeString()
+        }]);
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, {
+        sender: 'agent',
+        text: (language === 'es' ? 'Error de red: no se pudo contactar con el daemon.' : 'Network error: could not contact the daemon.') + ` (${(err as Error).message})`,
+        timestamp: new Date().toLocaleTimeString()
+      }]);
+    } finally {
+      setIsChatSending(false);
     }
   };
 
@@ -338,18 +455,18 @@ export default function App() {
       {/* 2. Main Workspace */}
       <main className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         {/* Left Side Pane: Navigation & Configurations */}
-        <div className="w-full md:w-[320px] shrink-0 border-b md:border-b-0 md:border-r border-card-border bg-[#050508] p-5 pb-8 flex flex-col gap-4 overflow-y-auto h-auto md:h-[calc(100vh-4rem)] min-h-0">
+        <div className="w-full md:w-[320px] shrink-0 border-b md:border-b-0 md:border-r border-zinc-900 bg-[#040406] p-5 pb-8 flex flex-col gap-4 overflow-y-auto h-auto md:h-[calc(100vh-4rem)] min-h-0">
           {/* Tab Selection */}
-          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[rgba(255,255,255,0.03)] border border-card-border">
+          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-xl bg-zinc-950 border border-zinc-800/30">
             <button
               onClick={() => setActiveTab('status')}
-              className={`py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${activeTab === 'status' ? 'bg-[rgba(255,255,255,0.08)] text-white shadow-sm' : 'text-muted hover:text-white'}`}
+              className={`py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 ${activeTab === 'status' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
             >
               {t('status')}
             </button>
             <button
               onClick={() => setActiveTab('settings')}
-              className={`py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${activeTab === 'settings' ? 'bg-[rgba(255,255,255,0.08)] text-white shadow-sm' : 'text-muted hover:text-white'}`}
+              className={`py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 ${activeTab === 'settings' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
             >
               {t('settings')}
             </button>
@@ -358,7 +475,7 @@ export default function App() {
           {activeTab === 'settings' ? (
             <div className="flex flex-col gap-4 pb-8">
               {/* Language Selector */}
-              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-3">
+              <div className="p-4 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col gap-3 backdrop-blur-md">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-accent-amber select-none">
                   <Globe size={14} />
                   <span>{t('language').toUpperCase()}</span>
@@ -367,7 +484,7 @@ export default function App() {
                   <select
                     value={language}
                     onChange={e => setLanguage(e.target.value as 'en' | 'es')}
-                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber"
+                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                   >
                     <option value="en" className="bg-card">{t('english')}</option>
                     <option value="es" className="bg-card">{t('spanish')}</option>
@@ -376,62 +493,62 @@ export default function App() {
               </div>
 
               {/* IMAP Config Form */}
-              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-3.5">
+              <div className="p-4 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col gap-3.5 backdrop-blur-md">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-accent-purple select-none">
                   <Mail size={14} />
                   <span>{t('imapMailbox')}</span>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">{t('hostPort')}</label>
+                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('hostPort')}</label>
                   <div className="flex gap-2 w-full">
                     <input
                       type="text"
                       value={imapHost}
                       onChange={e => setImapHost(e.target.value)}
-                      className="flex-1 min-w-0 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
+                      className="flex-1 min-w-0 bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                     />
                     <input
                       type="number"
                       value={imapPort}
                       onChange={e => setImapPort(Number(e.target.value))}
-                      className="w-16 shrink-0 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2 py-1.5 text-xs text-white text-center focus:outline-none focus:border-accent-purple"
+                      className="w-16 shrink-0 bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2 py-1.5 text-xs text-white text-center focus:outline-none transition-all duration-200"
                     />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">{t('emailAddress')}</label>
+                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('emailAddress')}</label>
                   <input
                     type="email"
                     value={imapUser}
                     onChange={e => setImapUser(e.target.value)}
                     placeholder="user@gmail.com"
-                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
+                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">{t('appPassword')}</label>
+                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('appPassword')}</label>
                   <input
                     type="password"
                     value={imapPass}
                     onChange={e => setImapPass(e.target.value)}
                     placeholder="•••• •••• •••• ••••"
-                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
+                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-purple/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                   />
                 </div>
               </div>
 
               {/* AI Config Form */}
-              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-3.5">
+              <div className="p-4 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col gap-3.5 backdrop-blur-md">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-accent-amber select-none">
                   <Cpu size={14} />
                   <span>{t('aiEngine')}</span>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">{t('provider')}</label>
+                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('provider')}</label>
                   <select
                     value={aiProvider}
                     onChange={e => setAiProvider(e.target.value as AIProvider)}
-                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber"
+                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                   >
                     <option value="gemini" className="bg-card">Google Gemini (Recommended)</option>
                     <option value="deepseek" className="bg-card">DeepSeek API</option>
@@ -439,32 +556,72 @@ export default function App() {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[9px] font-mono tracking-widest text-muted uppercase">{t('apiKey')}</label>
+                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('apiKey')}</label>
                   <input
                     type="password"
                     value={aiKey}
                     onChange={e => setAiKey(e.target.value)}
                     placeholder="sk-••••••••••••••••"
-                    className="bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-amber"
+                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('aiModelLabel')}</label>
+                  <input
+                    type="text"
+                    value={aiModel}
+                    onChange={e => setAiModel(e.target.value)}
+                    placeholder={
+                      aiProvider === 'gemini' ? 'gemini-2.5-flash' :
+                      aiProvider === 'openai' ? 'gpt-4o-mini' : 'deepseek-chat'
+                    }
+                    className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-accent-amber/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
                   />
                 </div>
               </div>
 
-              {/* WhatsApp Activation Toggle */}
-              <div className="p-4 rounded-2xl bg-card border border-card-border flex items-center justify-between">
-                <div className="flex flex-col pr-2">
-                  <span className="text-xs font-bold select-none text-emerald-400">{t('whatsappAlerting')}</span>
-                  <span className="text-[9px] text-muted">{t('whatsappAlertingSub')}</span>
+              {/* WhatsApp Activation Toggle & Config */}
+              <div className="p-4 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col gap-3.5 backdrop-blur-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col pr-2">
+                    <span className="text-xs font-bold select-none text-emerald-400">{t('whatsappAlerting')}</span>
+                    <span className="text-[9px] text-zinc-500">{t('whatsappAlertingSub')}</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 select-none">
+                    <input
+                      type="checkbox"
+                      checked={whatsappEnabled}
+                      onChange={() => setWhatsappEnabled(!whatsappEnabled)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-6 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={whatsappEnabled}
-                    onChange={() => setWhatsappEnabled(!whatsappEnabled)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
-                </label>
+
+                {whatsappEnabled && (
+                  <div className="flex flex-col gap-3.5 pt-2 border-t border-zinc-800/30">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('notificationPhoneLabel')}</label>
+                      <input
+                        type="text"
+                        value={notificationPhone}
+                        onChange={e => setNotificationPhone(e.target.value)}
+                        placeholder={t('notificationPhonePlaceholder')}
+                        className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-emerald-500/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] font-mono tracking-widest text-zinc-500 uppercase select-none">{t('notificationRulesLabel')}</label>
+                      <textarea
+                        value={notificationRules}
+                        onChange={e => setNotificationRules(e.target.value)}
+                        placeholder={t('notificationRulesPlaceholder')}
+                        rows={3}
+                        className="w-full bg-zinc-900/50 border border-zinc-800/60 focus:border-emerald-500/80 focus:bg-zinc-950/80 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none transition-all duration-200 resize-none font-sans"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Save Config Button */}
@@ -473,7 +630,7 @@ export default function App() {
                 disabled={isSaving || !isConfigValid}
                 className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all select-none flex items-center justify-center gap-1.5 ${
                   !isConfigValid
-                    ? 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-card-border'
+                    ? 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-800/20'
                     : showSavedCheck 
                       ? 'bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] border border-emerald-400/20' 
                       : 'bg-white text-black hover:bg-neutral-200'
@@ -492,10 +649,10 @@ export default function App() {
           ) : (
             <div className="flex flex-col gap-4">
               {/* WhatsApp QR Panel */}
-              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col items-center justify-center text-center gap-3.5">
+              <div className="p-4.5 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col items-center justify-center text-center gap-3.5 backdrop-blur-md">
                 <div className="w-full flex items-center justify-between text-xs font-bold text-emerald-400 select-none">
                   <span>{t('whatsappConsole')}</span>
-                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded border ${status.whatsappConnected ? 'bg-[rgba(16,185,129,0.1)] text-emerald-400 border-[rgba(16,185,129,0.2)]' : 'bg-[rgba(239,68,68,0.1)] text-accent-cherry border-[rgba(239,68,68,0.2)]'}`}>
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded-md border ${status.whatsappConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-accent-cherry border-rose-500/20'}`}>
                     {status.whatsappConnected ? t('connected') : t('disconnected')}
                   </span>
                 </div>
@@ -509,7 +666,7 @@ export default function App() {
                     />
                   </div>
                 ) : (
-                  <div className="h-44 w-full rounded-xl bg-[rgba(255,255,255,0.01)] border border-dashed border-card-border flex flex-col items-center justify-center text-center p-4">
+                  <div className="h-44 w-full rounded-xl bg-zinc-900/10 border border-dashed border-zinc-800/50 flex flex-col items-center justify-center text-center p-4">
                     {status.whatsappConnected ? (
                       <>
                         <CheckCircle size={24} className="text-emerald-500 mb-2" />
@@ -517,30 +674,30 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <Wifi size={24} className="text-muted mb-2 animate-pulse" />
-                        <span className="text-[10px] font-bold text-muted uppercase">{t('waitingEngine')}</span>
+                        <Wifi size={24} className="text-zinc-600 mb-2 animate-pulse" />
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase">{t('waitingEngine')}</span>
                       </>
                     )}
                   </div>
                 )}
-                <p className="text-[9px] text-muted leading-relaxed">
+                <p className="text-[9px] text-zinc-500 leading-relaxed">
                   {t('waInfo')}
                 </p>
               </div>
 
               {/* Running Status Metadata */}
-              <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-2.5 text-xs">
-                <div className="font-bold text-[10px] tracking-widest text-muted uppercase select-none">{t('telemetry')}</div>
+              <div className="p-4.5 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col gap-2.5 text-xs backdrop-blur-md">
+                <div className="font-bold text-[10px] tracking-widest text-zinc-500 uppercase select-none">{t('telemetry')}</div>
                 <div className="flex justify-between font-mono text-[10px]">
-                  <span className="text-muted">{t('memoryUsage')}</span>
+                  <span className="text-zinc-500">{t('memoryUsage')}</span>
                   <span className="font-bold text-white">48.2 MB</span>
                 </div>
                 <div className="flex justify-between font-mono text-[10px]">
-                  <span className="text-muted">{t('pollInterval')}</span>
+                  <span className="text-zinc-500">{t('pollInterval')}</span>
                   <span className="font-bold text-accent-purple">60 SECONDS</span>
                 </div>
                 <div className="flex justify-between font-mono text-[10px]">
-                  <span className="text-muted">{t('alertsForwarded')}</span>
+                  <span className="text-zinc-500">{t('alertsForwarded')}</span>
                   <span className="font-bold text-accent-amber">{emails.filter(e => e.notified).length} MSG</span>
                 </div>
               </div>
@@ -552,59 +709,162 @@ export default function App() {
         <div className="flex-1 flex flex-col overflow-y-visible md:overflow-hidden bg-background p-4 md:p-5 gap-4">
           {/* Main Dashboard view */}
           <div className="flex-1 flex flex-col gap-4 overflow-y-visible md:overflow-hidden">
-            {/* Top Widget: Parsed Emails Log Grid */}
-            <div className="flex-1 min-h-[350px] md:min-h-0 border border-card-border rounded-2xl bg-card overflow-hidden flex flex-col">
-              <div className="px-4 py-3.5 border-b border-card-border flex justify-between items-center bg-[rgba(255,255,255,0.01)]">
-                <div className="flex items-center gap-2 text-xs font-bold text-white select-none">
-                  <Mail size={14} className="text-accent-purple" />
-                  <span>{t('trackerTitle')}</span>
+            {/* Top Widget: Parsed Emails Log Grid or AI Chat */}
+            <div className="flex-1 min-h-[350px] md:min-h-0 border border-zinc-900 rounded-3xl bg-[#07070c]/90 overflow-hidden flex flex-col backdrop-blur-md">
+              <div className="px-5 py-4 border-b border-zinc-900 flex flex-col sm:flex-row justify-between items-center bg-zinc-950/20 gap-2 select-none">
+                <div className="flex items-center gap-3">
+                  {/* Segmented Control */}
+                  <div className="flex p-0.5 rounded-xl bg-zinc-950 border border-zinc-800/30">
+                    <button
+                      onClick={() => setRightTab('inbox')}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all duration-200 ${rightTab === 'inbox' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
+                    >
+                      {t('inboxTab').toUpperCase()}
+                    </button>
+                    <button
+                      onClick={() => setRightTab('chat')}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-all duration-200 ${rightTab === 'chat' ? 'bg-zinc-800/80 text-white shadow-sm' : 'text-zinc-500 hover:text-white'}`}
+                    >
+                      {t('chatTab').toUpperCase()}
+                    </button>
+                  </div>
                 </div>
-                <span className="text-[9px] font-mono text-muted uppercase">{t('trackerSub')}</span>
+                <span className="text-[9px] font-mono text-zinc-500 uppercase">
+                  {rightTab === 'inbox' ? t('trackerSub') : t('chatSub')}
+                </span>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-                {emails.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 select-none">
-                    <CheckCircle size={28} className="text-emerald-500/70 mb-2.5" />
-                    <h3 className="text-xs font-bold tracking-tight text-white mb-0.5">{t('inboxSecureTitle')}</h3>
-                    <p className="text-[10px] text-muted max-w-[280px] leading-relaxed">
-                      {t('inboxSecureSub')}
-                    </p>
-                  </div>
-                ) : (
-                  emails.map(email => (
-                    <div
-                      key={email.id}
-                      className={`p-3.5 rounded-xl border ${email.urgency === 'high' ? 'border-[rgba(226,62,62,0.2)] bg-[rgba(226,62,62,0.02)]' : 'border-card-border bg-[rgba(255,255,255,0.01)]'} flex flex-col gap-2 transition-all duration-300`}
-                    >
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${email.urgency === 'high' ? 'bg-[rgba(226,62,62,0.15)] text-accent-cherry border border-[rgba(226,62,62,0.2)]' : 'bg-neutral-800 text-muted'}`}>
-                            {translateCategory(email.category)}
-                          </span>
-                          <span className="text-[10px] text-muted font-mono">{email.timestamp}</span>
+              {rightTab === 'chat' ? (
+                <div className="flex-1 flex flex-col min-h-0">
+                  {(!status.aiConnected || !status.imapConnected) && (
+                    <div className="mx-4 mt-4 px-3.5 py-2.5 rounded-2xl bg-rose-500/5 border border-rose-500/15 text-[10px] text-rose-400 select-none flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+                      <span>{t('chatWarningOffline')}</span>
+                    </div>
+                  )}
+
+                  {/* Message History */}
+                  <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3.5 min-h-0">
+                    {chatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex flex-col max-w-[85%] ${msg.sender === 'user' ? 'self-end items-end' : 'self-start items-start'}`}
+                      >
+                        <div
+                          className={`p-3.5 rounded-3xl text-xs leading-relaxed break-words select-text ${
+                            msg.sender === 'user'
+                              ? 'bg-gradient-to-br from-accent-purple to-accent-purple/80 text-white rounded-br-none shadow-[0_4px_12px_rgba(139,92,246,0.15)]'
+                              : 'bg-zinc-900/30 border border-zinc-800/50 text-neutral-200 rounded-bl-none'
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap">{msg.text}</p>
                         </div>
-                        {email.notified ? (
-                          <span className="text-[9px] text-emerald-400 font-bold bg-[rgba(16,185,129,0.1)] px-1.5 py-0.5 rounded flex items-center gap-1 select-none">
-                            {t('forwardedToWa')}
-                          </span>
-                        ) : (
-                          <span className="text-[9px] text-zinc-500 font-medium bg-zinc-900 px-1.5 py-0.5 rounded flex items-center gap-1 select-none">
-                            {t('noAlertsSent')}
-                          </span>
-                        )}
+                        <span className="text-[8px] text-zinc-500 font-mono mt-1 px-1.5 select-none">{msg.timestamp}</span>
                       </div>
-                      <div className="flex flex-col gap-0.5">
-                        <h4 className="text-xs font-bold text-white">{email.subject}</h4>
-                        <p className="text-[10px] text-muted font-mono select-all">FROM: {email.sender}</p>
-                      </div>
-                      <p className="text-[10px] leading-relaxed text-muted bg-[rgba(0,0,0,0.2)] p-2 rounded border border-card-border select-text">
-                        {email.summary}
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Quick Search Chips */}
+                  <div className="px-5 py-3 border-t border-zinc-900 bg-zinc-950/20 select-none">
+                    <div className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest mb-1.5">{t('quickActions')}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        onClick={() => handleSendChatMessage(language === 'es' ? 'Buscar correos de hoy' : "Search today's emails")}
+                        disabled={isChatSending || !status.aiConnected || !status.imapConnected}
+                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-zinc-800/60 text-[9px] text-neutral-300 hover:bg-zinc-800/40 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {t('quickSearchToday')}
+                      </button>
+                      <button
+                        onClick={() => handleSendChatMessage(language === 'es' ? 'Buscar entrevistas de esta semana' : 'Search interview calls this week')}
+                        disabled={isChatSending || !status.aiConnected || !status.imapConnected}
+                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-zinc-800/60 text-[9px] text-neutral-300 hover:bg-zinc-800/40 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {t('quickSearchInterview')}
+                      </button>
+                      <button
+                        onClick={() => handleSendChatMessage(language === 'es' ? 'Buscar correos de Alan' : 'Search emails from Alan')}
+                        disabled={isChatSending || !status.aiConnected || !status.imapConnected}
+                        className="px-3 py-1.5 rounded-full bg-zinc-900/20 border border-zinc-800/60 text-[9px] text-neutral-300 hover:bg-zinc-800/40 hover:text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {t('quickSearchFromAlan')}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Input Form */}
+                  <form
+                    onSubmit={(e) => { e.preventDefault(); handleSendChatMessage(); }}
+                    className="p-3 border-t border-zinc-900 flex gap-2 items-center bg-zinc-950/20"
+                  >
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      disabled={isChatSending || !status.aiConnected || !status.imapConnected}
+                      placeholder={t('chatPlaceholder')}
+                      className="flex-1 bg-zinc-900/40 border border-zinc-800/50 focus:border-accent-purple/80 rounded-2xl px-4 py-2.5 text-xs text-white focus:outline-none transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed animate-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!chatInput.trim() || isChatSending || !status.aiConnected || !status.imapConnected}
+                      className="px-5 py-2.5 bg-white text-black font-bold text-xs rounded-2xl hover:bg-neutral-200 transition-all duration-200 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed select-none shrink-0"
+                    >
+                      {isChatSending ? (
+                        <RefreshCw size={12} className="animate-spin" />
+                      ) : (
+                        t('chatSend')
+                      )}
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                /* INBOX VIEWER CONTAINER */
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                  {emails.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 select-none">
+                      <CheckCircle size={28} className="text-emerald-500/70 mb-2.5" />
+                      <h3 className="text-xs font-bold tracking-tight text-white mb-0.5">{t('inboxSecureTitle')}</h3>
+                      <p className="text-[10px] text-zinc-500 max-w-[280px] leading-relaxed">
+                        {t('inboxSecureSub')}
                       </p>
                     </div>
-                  ))
-                )}
-              </div>
+                  ) : (
+                    emails.map(email => (
+                      <div
+                        key={email.id}
+                        className={`p-4 rounded-2xl border ${email.urgency === 'high' ? 'border-rose-500/20 bg-rose-500/5' : 'border-zinc-800/40 bg-zinc-900/10'} flex flex-col gap-2.5 transition-all duration-300`}
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold uppercase tracking-wider ${email.urgency === 'high' ? 'bg-rose-500/15 text-accent-cherry border border-rose-500/20' : 'bg-zinc-900/30 border border-zinc-800/60 text-zinc-400'}`}>
+                              {translateCategory(email.category)}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 font-mono">{email.timestamp}</span>
+                          </div>
+                          {email.notified ? (
+                            <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
+                              {t('forwardedToWa')}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-zinc-500 font-medium bg-zinc-900/50 border border-zinc-800/50 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
+                              {t('noAlertsSent')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <h4 className="text-xs font-bold text-white">{email.subject}</h4>
+                          <p className="text-[10px] text-zinc-500 font-mono select-all">FROM: {email.sender}</p>
+                        </div>
+                        <p className="text-[10px] leading-relaxed text-neutral-300 bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl select-text">
+                          {email.summary}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Bottom Widget: Live Output Console */}

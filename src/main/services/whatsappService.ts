@@ -7,7 +7,7 @@ export class WhatsappService {
   private onQrCallback: ((qr: string) => void) | null = null;
   private onReadyCallback: (() => void) | null = null;
 
-  constructor() {}
+  constructor(private dataPath?: string) {}
 
   public onQr(callback: (qr: string) => void) {
     this.onQrCallback = callback;
@@ -23,8 +23,12 @@ export class WhatsappService {
 
     this.client = new Client({
       authStrategy: new LocalAuth({
-        dataPath: './data/auth' // Persisted path for WhatsApp login token session
+        dataPath: this.dataPath || './data/auth' // Persisted path for WhatsApp login token session
       }),
+      webVersionCache: {
+        type: 'none'
+      },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       puppeteer: {
         executablePath,
         headless: true,
@@ -35,7 +39,6 @@ export class WhatsappService {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--single-process',
           '--disable-gpu'
         ]
       }
@@ -61,7 +64,9 @@ export class WhatsappService {
       console.error('WhatsApp Authentication Failure:', msg);
     });
 
-    this.client.initialize();
+    this.client.initialize().catch((err) => {
+      console.error('Failed to initialize WhatsApp client:', err);
+    });
   }
 
   public async sendMessage(toPhoneNumber: string, message: string): Promise<void> {
@@ -82,5 +87,17 @@ export class WhatsappService {
 
   public getStatus(): boolean {
     return this.isReady;
+  }
+
+  public async destroy(): Promise<void> {
+    if (this.client) {
+      try {
+        await this.client.destroy();
+      } catch (err) {
+        console.error('Error destroying WhatsApp client:', err);
+      }
+      this.client = null;
+      this.isReady = false;
+    }
   }
 }
