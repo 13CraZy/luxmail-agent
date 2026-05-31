@@ -42,6 +42,18 @@ if (!fs.existsSync(DATA_DIR)) {
 // Express App Setup
 const app = express();
 app.use(express.json());
+
+// Enable CORS for development cross-origin requests
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 const server = createServer(app);
 
 // WebSocket Server for streaming live logs and QR codes
