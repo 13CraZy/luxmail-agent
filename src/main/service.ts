@@ -460,13 +460,14 @@ async function restartServices() {
     addConsoleLog('info', `IMAP connection status: ${status.toUpperCase()}`);
     broadcast({ type: 'status', status: getSystemStatus() });
   });
-  imapService.onNewEmail(async (email) => {
-    addConsoleLog('info', `New email detected from: ${email.sender}. Topic: "${email.subject}"`);
-    
+  async function classifyAndLogEmail(
+    email: { sender: string; subject: string; body: string; date: Date },
+    isRealTime: boolean
+  ) {
     let result: ClassificationResult;
 
     if (aiService) {
-      addConsoleLog('info', 'Analyzing email priority with AI...');
+      addConsoleLog('info', `Analyzing email: "${email.subject}"`);
       result = await aiService.classifyEmail(email.sender, email.subject, email.body, currentLanguage);
     } else {
       addConsoleLog('warn', 'AI Engine offline. Running local mock rule-based classifier.');
@@ -491,7 +492,7 @@ async function restartServices() {
 
     const mailLog: MailLog = {
       id: Math.random().toString(36).substring(7),
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: email.date.toLocaleTimeString(),
       sender: email.sender,
       subject: email.subject,
       summary: result.summary,
@@ -522,12 +523,12 @@ async function restartServices() {
     let dndActive = false;
     if (config?.dndEnabled && config.dndStart && config.dndEnd) {
       dndActive = isCurrentlyInDndRange(config.dndStart, config.dndEnd);
-      if (dndActive) {
+      if (dndActive && isRealTime) {
         addConsoleLog('warn', `WhatsApp notification skipped due to active Do Not Disturb (DND) silent hours (${config.dndStart} - ${config.dndEnd}).`);
       }
     }
 
-    if (shouldNotify && !dndActive && config?.whatsappEnabled && whatsappService) {
+    if (isRealTime && shouldNotify && !dndActive && config?.whatsappEnabled && whatsappService) {
       const isSpanish = currentLanguage === 'es';
       const alertMessage = isSpanish
         ? `📬 *Alerta de LuxMail*\n\n*De:* ${email.sender}\n*Asunto:* ${email.subject}\n*Resumen:* ${result.summary}\n\n_Clasificación: ${translateCategory(result.category, 'es')} (prioridad ${translateUrgency(result.urgency, 'es')})_`
@@ -547,12 +548,24 @@ async function restartServices() {
     emailLogs.push(mailLog);
     if (emailLogs.length > 50) emailLogs.shift();
     broadcast({ type: 'email', email: mailLog });
+  }
+
+  imapService.onNewEmail(async (email) => {
+    addConsoleLog('info', `New email detected from: ${email.sender}. Topic: "${email.subject}"`);
+    await classifyAndLogEmail(email, true);
   });
 
   try {
     addConsoleLog('info', 'Establishing connection to IMAP mailbox...');
     await imapService.connect();
     addConsoleLog('success', 'IMAP Mail Monitor online.');
+
+    addConsoleLog('info', "Scanning today's emails...");
+    const todayEmails = await imapService.fetchTodayEmails();
+    addConsoleLog('info', `Found ${todayEmails.length} emails received today. Processing initial scan...`);
+    for (const email of todayEmails) {
+      await classifyAndLogEmail(email, false);
+    }
   } catch (err) {
     addConsoleLog('error', `IMAP connection error: ${(err as Error).message}`);
   }

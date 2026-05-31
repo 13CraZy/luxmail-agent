@@ -220,6 +220,48 @@ export class ImapService {
     return results;
   }
 
+  public async fetchTodayEmails(): Promise<{ sender: string; subject: string; body: string; date: Date }[]> {
+    if (!this.client || this.connectionStatus !== 'connected') {
+      return [];
+    }
+
+    if (!this.client.mailbox) {
+      await this.client.mailboxOpen('INBOX', { readOnly: true });
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    console.log(`[IMAP] Scanning for emails since ${todayStart.toDateString()}...`);
+    const sequenceNumbers = await this.client.search({ since: todayStart });
+    if (!sequenceNumbers || sequenceNumbers.length === 0) return [];
+
+    const results = [];
+    for (const seq of sequenceNumbers) {
+      try {
+        const message = await this.client.fetchOne(seq.toString(), {
+          envelope: true,
+          source: true,
+        });
+
+        if (message && message.envelope) {
+          const fromList = message.envelope.from || [];
+          const sender = fromList.map(f => `${f.name || ''} <${f.address || ''}>`).join(', ');
+          const subject = message.envelope.subject || '(No Subject)';
+          const date = message.envelope.date || new Date();
+          
+          const rawSource = message.source ? message.source.toString() : '';
+          const body = this.cleanEmailBody(rawSource);
+          
+          results.push({ sender, subject, body, date });
+        }
+      } catch (err) {
+        console.error(`Failed to fetch today's email seq ${seq}:`, err);
+      }
+    }
+    return results;
+  }
+
   private async startListening() {
     if (!this.client) return;
 
