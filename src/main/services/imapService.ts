@@ -4,7 +4,7 @@ import { IMAPConfig } from '../../shared/types';
 export class ImapService {
   private client: ImapFlow | null = null;
   private isConnected = false;
-  private onNewEmailCallback: ((email: { sender: string; subject: string; body: string; date: Date }) => void) | null = null;
+  public onNewEmailCallback: ((email: { sender: string; subject: string; body: string; date: Date }) => void) | null = null;
 
   constructor(private config: IMAPConfig) {}
 

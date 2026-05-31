@@ -118,6 +118,35 @@ app.get('/api/logs', (_req, res) => {
   res.json({ emails: emailLogs, console: consoleLogs });
 });
 
+// Endpoint to simulate incoming emails for testing purposes
+app.post('/api/test/inject-email', async (req, res) => {
+  const { sender, subject, body } = req.body;
+  if (!sender || !subject || !body) {
+    return res.status(400).json({ error: 'Missing sender, subject or body in request body.' });
+  }
+
+  addConsoleLog('info', `[SIMULATION] Injecting mock email: "${subject}" from ${sender}`);
+
+  if (imapService && imapService.onNewEmailCallback) {
+    // Simulates the exact E2E pipeline as if it was fetched via IMAP
+    imapService.onNewEmailCallback({ sender, subject, body, date: new Date() });
+    res.json({ success: true, message: 'Mock email injected into active monitor pipeline.' });
+  } else {
+    // Dry run if IMAP is offline but AI is configured
+    if (aiService) {
+      addConsoleLog('warn', '[SIMULATION] IMAP monitor offline. Executing AI classification dry run.');
+      const result = await aiService.classifyEmail(sender, subject, body);
+      res.json({ 
+        success: true, 
+        message: 'Processed dry run email classification (IMAP not online).',
+        classification: result 
+      });
+    } else {
+      res.status(400).json({ error: 'Active services not initialized. Set configuration first.' });
+    }
+  }
+});
+
 async function restartServices() {
   addConsoleLog('info', 'Initializing LuxMail Agent background pipelines...');
 
