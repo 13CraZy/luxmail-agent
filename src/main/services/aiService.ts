@@ -288,8 +288,63 @@ Return a JSON object matching this schema. Only include fields if they are expli
       throw new Error('AI Provider Client not initialized.');
     } catch (err) {
       console.error('Error during query translation:', err);
-      return {};
+      // Local fallback parser: extract basic search hints from natural language
+      return this.localQueryParser(query, todayDate);
     }
+  }
+
+  private localQueryParser(query: string, todayDate: string): {
+    since?: string; before?: string; from?: string; subject?: string; body?: string; keywords?: string[];
+  } {
+    const q = query.toLowerCase();
+    const result: { since?: string; before?: string; from?: string; subject?: string; body?: string; keywords?: string[] } = {};
+    const today = new Date(todayDate);
+
+    // Date range detection
+    if (q.includes('hoy') || q.includes('today')) {
+      result.since = todayDate;
+    } else if (q.includes('ayer') || q.includes('yesterday')) {
+      const d = new Date(today); d.setDate(d.getDate() - 1);
+      result.since = d.toISOString().split('T')[0];
+      result.before = todayDate;
+    } else if (q.match(/(?:esta\s+semana|this\s+week)/)) {
+      const d = new Date(today); d.setDate(d.getDate() - 7);
+      result.since = d.toISOString().split('T')[0];
+    } else if (q.match(/(?:este\s+mes|this\s+month)/)) {
+      const d = new Date(today); d.setMonth(d.getMonth() - 1);
+      result.since = d.toISOString().split('T')[0];
+    } else if (q.match(/(?:un\s+mes|1\s+mes|hace\s+un\s+mes|last\s+month|a\s+month|one\s+month|desde\s+hace\s+un\s+mes)/)) {
+      const d = new Date(today); d.setMonth(d.getMonth() - 1);
+      result.since = d.toISOString().split('T')[0];
+    } else if (q.match(/(?:dos\s+semanas|2\s+semanas|two\s+weeks|2\s+weeks)/)) {
+      const d = new Date(today); d.setDate(d.getDate() - 14);
+      result.since = d.toISOString().split('T')[0];
+    }
+
+    // Sender detection (from X, de X, de parte de X)
+    const fromMatch = q.match(/(?:from|de|de parte de)\s+([a-zA-Z0-9áéíóúñ]+)/i);
+    if (fromMatch && !['hoy', 'ayer', 'empleo', 'trabajo', 'hoy', 'correos', 'correo', 'mis', 'las', 'los', 'un', 'una'].includes(fromMatch[1])) {
+      result.from = fromMatch[1];
+    }
+
+    // Keyword/platform detection for OR-style searches
+    const keywords: string[] = [];
+    const platformKeywords = ['linkedin', 'indeed', 'glassdoor', 'computrabajo', 'occ', 'infojobs', 'bumeran'];
+    for (const kw of platformKeywords) {
+      if (q.includes(kw)) keywords.push(kw);
+    }
+
+    // Job-related keyword detection
+    const jobKeywords = ['interview', 'entrevista', 'offer', 'oferta', 'reject', 'rechazo', 'application', 'postulaci', 'vacante', 'empleo', 'hiring'];
+    for (const kw of jobKeywords) {
+      if (q.includes(kw)) keywords.push(kw);
+    }
+
+    if (keywords.length > 0) {
+      result.keywords = [...new Set(keywords)];
+    }
+
+    return result;
   }
 
   public async generateChatResponse(
