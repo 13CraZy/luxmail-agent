@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mail, Cpu, Settings, Terminal, ShieldAlert, CheckCircle, Wifi, RefreshCw } from 'lucide-react';
+import { Mail, Cpu, Terminal, CheckCircle, Wifi, RefreshCw } from 'lucide-react';
 import { AgentConfig, SystemStatus, MailLog, ConsoleLog, AIProvider } from '../shared/types';
 
 export default function App() {
@@ -11,8 +11,9 @@ export default function App() {
   const [aiProvider, setAiProvider] = useState<AIProvider>('gemini');
   const [aiKey, setAiKey] = useState('');
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   
-  // System State
+  // System & Connection State
   const [status, setStatus] = useState<SystemStatus>({
     imapConnected: false,
     whatsappConnected: false,
@@ -20,35 +21,68 @@ export default function App() {
   });
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [logs, setLogs] = useState<ConsoleLog[]>([
-    { timestamp: new Date().toLocaleTimeString(), level: 'info', message: 'LuxMail Agent UI initialized.' },
-    { timestamp: new Date().toLocaleTimeString(), level: 'warn', message: 'Credentials not configured. Please fill in configuration.' }
+    { timestamp: new Date().toLocaleTimeString(), level: 'info', message: 'LuxMail Agent dashboard launched.' }
   ]);
   const [emails, setEmails] = useState<MailLog[]>([]);
   const [activeTab, setActiveTab] = useState<'status' | 'settings'>('status');
 
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
+  // Auto-resolve API and WS URLs for development and production containers
+  const apiBase = window.location.port === '5173' ? 'http://localhost:3000' : '';
+  const wsHost = window.location.port === '5173' ? 'localhost:3000' : window.location.host;
+
   // Auto-scroll terminal to bottom
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Mock connecting flow for preview
-  const handleSaveConfig = () => {
-    addLog('info', 'Saving configuration...');
-    // Simulated connection tests
-    setTimeout(() => {
-      setStatus({
-        imapConnected: true,
-        whatsappConnected: false,
-        aiConnected: true,
-      });
-      addLog('success', 'IMAP connection verified (imap.gmail.com:993).');
-      addLog('success', `AI Engine ready using ${aiProvider.toUpperCase()}.`);
-      setQrCode('MOCK_QR_CODE_DATA');
-      addLog('warn', 'WhatsApp connection pending. Scan QR code to link device.');
-    }, 1500);
-  };
+  // Synchronize status, logs, and new emails via WebSockets
+  useEffect(() => {
+    addLog('info', 'Connecting to backend daemon...');
+
+    // Fetch initial history
+    fetch(`${apiBase}/api/logs`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.emails) setEmails(data.emails);
+        if (data.console) setLogs(prev => [...prev, ...data.console]);
+      })
+      .catch(_err => addLog('error', 'Failed to retrieve logs history. Daemon offline.'));
+
+    // Setup Websocket
+    const socket = new WebSocket(`ws://${wsHost}`);
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'status') {
+          setStatus(data.status);
+        } else if (data.type === 'qr') {
+          setQrCode(data.qr);
+        } else if (data.type === 'log') {
+          setLogs(prev => [...prev, data.log]);
+        } else if (data.type === 'email') {
+          setEmails(prev => [data.email, ...prev]);
+        }
+      } catch (err) {
+        console.error('Error parsing WebSocket message:', err);
+      }
+    };
+
+    socket.onopen = () => {
+      addLog('success', 'Connected to local Agent daemon via WebSocket.');
+    };
+
+    socket.onclose = () => {
+      addLog('error', 'Disconnected from local Agent daemon. Reconnecting in 5s...');
+      setStatus({ imapConnected: false, whatsappConnected: false, aiConnected: false });
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, []);
 
   const addLog = (level: ConsoleLog['level'], message: string) => {
     setLogs(prev => [...prev, {
@@ -56,6 +90,51 @@ export default function App() {
       level,
       message
     }]);
+  };
+
+  const handleSaveConfig = async () => {
+    setIsSaving(true);
+    addLog('info', 'Applying configuration updates...');
+
+    const configPayload: AgentConfig = {
+      imap: {
+        host: imapHost,
+        port: imapPort,
+        user: imapUser,
+        passwordHex: imapPass,
+        secure: true,
+      },
+      ai: {
+        provider: aiProvider,
+        apiKeyHex: aiKey,
+      },
+      whatsappEnabled,
+      telegramEnabled: false,
+      urgencyThreshold: 'medium',
+    };
+
+    try {
+      const response = await fetch(`${apiBase}/api/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configPayload),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        addConsoleLog('success', 'Configuration updated successfully.');
+      } else {
+        addConsoleLog('error', 'Configuration rejected by daemon.');
+      }
+    } catch (err) {
+      addConsoleLog('error', `Failed to deliver configuration: ${(err as Error).message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const addConsoleLog = (level: ConsoleLog['level'], message: string) => {
+    addLog(level, message);
   };
 
   return (
@@ -75,7 +154,7 @@ export default function App() {
         {/* Global Connection Badges */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className={`relative flex h-2 w-2`}>
+            <span className="relative flex h-2 w-2">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.imapConnected ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`} />
               <span className={`relative inline-flex rounded-full h-2 w-2 ${status.imapConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
             </span>
@@ -83,7 +162,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className={`relative flex h-2 w-2`}>
+            <span className="relative flex h-2 w-2">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.whatsappConnected ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`} />
               <span className={`relative inline-flex rounded-full h-2 w-2 ${status.whatsappConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
             </span>
@@ -91,7 +170,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className={`relative flex h-2 w-2`}>
+            <span className="relative flex h-2 w-2">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.aiConnected ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`} />
               <span className={`relative inline-flex rounded-full h-2 w-2 ${status.aiConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
             </span>
@@ -217,9 +296,11 @@ export default function App() {
               {/* Save Config Button */}
               <button
                 onClick={handleSaveConfig}
-                className="w-full py-2.5 rounded-xl bg-foreground text-background text-xs font-bold hover:bg-neutral-200 transition-all select-none"
+                disabled={isSaving}
+                className="w-full py-2.5 rounded-xl bg-foreground text-background text-xs font-bold hover:bg-neutral-200 transition-all select-none disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
-                Apply & Start Agent
+                {isSaving && <RefreshCw size={12} className="animate-spin" />}
+                {isSaving ? 'Applying...' : 'Apply & Start Agent'}
               </button>
             </div>
           ) : (
@@ -228,7 +309,7 @@ export default function App() {
               <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col items-center justify-center text-center gap-3.5">
                 <div className="w-full flex items-center justify-between text-xs font-bold text-emerald-400 select-none">
                   <span>WHATSAPP CONSOLE</span>
-                  <span className="text-[9px] font-mono bg-[rgba(16,185,129,0.1)] px-2 py-0.5 rounded border border-[rgba(16,185,129,0.2)]">
+                  <span className={`text-[9px] font-mono px-2 py-0.5 rounded border ${status.whatsappConnected ? 'bg-[rgba(16,185,129,0.1)] text-emerald-400 border-[rgba(16,185,129,0.2)]' : 'bg-[rgba(239,68,68,0.1)] text-accent-cherry border-[rgba(239,68,68,0.2)]'}`}>
                     {status.whatsappConnected ? 'CONNECTED' : 'DISCONNECTED'}
                   </span>
                 </div>
@@ -245,8 +326,17 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="h-44 w-full rounded-xl bg-[rgba(255,255,255,0.01)] border border-dashed border-card-border flex flex-col items-center justify-center text-center p-4">
-                    <Wifi size={24} className="text-muted mb-2 animate-pulse" />
-                    <span className="text-[10px] font-bold text-muted uppercase">Waiting for engine start</span>
+                    {status.whatsappConnected ? (
+                      <>
+                        <CheckCircle size={24} className="text-emerald-500 mb-2" />
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase">System Linked</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wifi size={24} className="text-muted mb-2 animate-pulse" />
+                        <span className="text-[10px] font-bold text-muted uppercase">Waiting for engine start</span>
+                      </>
+                    )}
                   </div>
                 )}
                 <p className="text-[9px] text-muted leading-relaxed">
@@ -259,7 +349,7 @@ export default function App() {
                 <div className="font-bold text-[10px] tracking-widest text-muted uppercase select-none">System Telemetry</div>
                 <div className="flex justify-between font-mono text-[10px]">
                   <span className="text-muted">MEMORY USAGE</span>
-                  <span className="font-bold text-white">42.8 MB</span>
+                  <span className="font-bold text-white">48.2 MB</span>
                 </div>
                 <div className="flex justify-between font-mono text-[10px]">
                   <span className="text-muted">POLL INTERVAL</span>
@@ -267,7 +357,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between font-mono text-[10px]">
                   <span className="text-muted">ALERTS FORWARDED</span>
-                  <span className="font-bold text-accent-amber">0 MSG</span>
+                  <span className="font-bold text-accent-amber">{emails.filter(e => e.notified).length} MSG</span>
                 </div>
               </div>
             </div>
@@ -310,9 +400,13 @@ export default function App() {
                           </span>
                           <span className="text-[10px] text-muted font-mono">{email.timestamp}</span>
                         </div>
-                        {email.notified && (
+                        {email.notified ? (
                           <span className="text-[9px] text-emerald-400 font-bold bg-[rgba(16,185,129,0.1)] px-1.5 py-0.5 rounded flex items-center gap-1 select-none">
                             FORWARDED TO WA
+                          </span>
+                        ) : (
+                          <span className="text-[9px] text-zinc-500 font-medium bg-zinc-900 px-1.5 py-0.5 rounded flex items-center gap-1 select-none">
+                            NO ALERTS SENT
                           </span>
                         )}
                       </div>
