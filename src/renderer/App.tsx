@@ -85,6 +85,13 @@ const translations = {
     quickSearchToday: "Search today's emails",
     quickSearchInterview: "Search interview calls this week",
     quickSearchFromAlan: "Search emails from Alan",
+    priorityCategoriesLabel: 'Priority Categories',
+    priorityCategoriesSub: 'Select which categories trigger WhatsApp alerts',
+    catInterview: 'Interviews',
+    catJobOffer: 'Job Offers',
+    catReject: 'Rejections',
+    catSpam: 'Spam',
+    catGeneral: 'General',
   },
   es: {
     title: 'luxmail.agent',
@@ -168,6 +175,13 @@ const translations = {
     quickSearchToday: "Buscar correos de hoy",
     quickSearchInterview: "Buscar entrevistas de esta semana",
     quickSearchFromAlan: "Buscar correos de Alan",
+    priorityCategoriesLabel: 'Categorías Prioritarias',
+    priorityCategoriesSub: 'Selecciona qué categorías activan alertas de WhatsApp',
+    catInterview: 'Entrevistas',
+    catJobOffer: 'Ofertas',
+    catReject: 'Rechazos',
+    catSpam: 'Spam',
+    catGeneral: 'General',
   }
 };
 
@@ -191,6 +205,7 @@ export default function App() {
   const [dndStart, setDndStart] = useState('22:00');
   const [dndEnd, setDndEnd] = useState('08:00');
   const [dndPreset, setDndPreset] = useState<'night' | 'work' | 'custom'>('night');
+  const [priorityCategories, setPriorityCategories] = useState<string[]>(['Interview', 'Job Offer']);
   const [isSaving, setIsSaving] = useState(false);
   const [showSavedCheck, setShowSavedCheck] = useState(false);
   const [isLoggingOutWa, setIsLoggingOutWa] = useState(false);
@@ -319,6 +334,11 @@ export default function App() {
         } else {
           setDndPreset('custom');
         }
+        if (data.priorityCategories) {
+          setPriorityCategories(data.priorityCategories);
+        } else {
+          setPriorityCategories(['Interview', 'Job Offer']);
+        }
         addLog('success', 'Loaded configuration from backend daemon storage.');
       })
       .catch(() => {
@@ -410,6 +430,7 @@ export default function App() {
       dndEnabled,
       dndStart: dndEnabled ? dndStart : undefined,
       dndEnd: dndEnabled ? dndEnd : undefined,
+      priorityCategories,
     };
 
     try {
@@ -782,6 +803,45 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Priority Categories Config Card */}
+              <div className="p-4 rounded-2xl bg-[#09090e]/60 border border-zinc-800/40 flex flex-col gap-3.5 backdrop-blur-md">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-bold select-none text-accent-purple">{t('priorityCategoriesLabel')}</span>
+                  <span className="text-[9px] text-zinc-500">{t('priorityCategoriesSub')}</span>
+                </div>
+                <div className="flex flex-col gap-2.5 pt-2 border-t border-zinc-800/30">
+                  {[
+                    { id: 'Interview', label: t('catInterview'), color: 'peer-checked:bg-purple-500' },
+                    { id: 'Job Offer', label: t('catJobOffer'), color: 'peer-checked:bg-emerald-500' },
+                    { id: 'Reject', label: t('catReject'), color: 'peer-checked:bg-rose-500' },
+                    { id: 'Spam', label: t('catSpam'), color: 'peer-checked:bg-amber-500' },
+                    { id: 'General', label: t('catGeneral'), color: 'peer-checked:bg-zinc-500' },
+                  ].map(cat => {
+                    const isChecked = priorityCategories.includes(cat.id);
+                    return (
+                      <div key={cat.id} className="flex items-center justify-between py-0.5">
+                        <span className="text-xs text-neutral-300 font-medium select-none">{cat.label}</span>
+                        <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked) {
+                                setPriorityCategories(priorityCategories.filter(c => c !== cat.id));
+                              } else {
+                                setPriorityCategories([...priorityCategories, cat.id]);
+                              }
+                            }}
+                            className="sr-only peer"
+                          />
+                          <div className={`w-10 h-6 bg-zinc-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all ${cat.color}`}></div>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Do Not Disturb (DND) Config Card */}

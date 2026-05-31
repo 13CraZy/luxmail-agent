@@ -30,6 +30,7 @@ export interface AgentConfig {
   dndEnabled: boolean;
   dndStart?: string;
   dndEnd?: string;
+  priorityCategories?: string[];
 }
 
 export interface SystemStatus {

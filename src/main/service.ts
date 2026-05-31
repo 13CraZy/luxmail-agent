@@ -143,6 +143,9 @@ function getSystemStatus(): SystemStatus {
 if (fs.existsSync(CONFIG_FILE)) {
   try {
     config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    if (config && !config.priorityCategories) {
+      config.priorityCategories = ['Interview', 'Job Offer'];
+    }
     addConsoleLog('info', 'Configuration loaded successfully from local storage.');
   } catch (err) {
     addConsoleLog('error', `Failed to parse config file: ${(err as Error).message}`);
@@ -166,6 +169,9 @@ app.get('/api/config', (_req, res) => {
 
 app.post('/api/config', (req, res) => {
   config = req.body as AgentConfig;
+  if (config && !config.priorityCategories) {
+    config.priorityCategories = ['Interview', 'Job Offer'];
+  }
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
     addConsoleLog('success', 'Configuration updated and written to disk.');
@@ -282,6 +288,9 @@ app.post('/api/test/inject-email', async (req, res) => {
       addConsoleLog('warn', '[SIMULATION] IMAP monitor offline. Executing AI classification dry run.');
       const result = await aiService.classifyEmail(sender, subject, body, config?.language || 'en');
       
+      const priorityCategories = config?.priorityCategories || ['Interview', 'Job Offer'];
+      result.isPriority = priorityCategories.includes(result.category);
+
       const mailLog: MailLog = {
         id: Math.random().toString(36).substring(7),
         timestamp: new Date().toLocaleTimeString(),
@@ -316,7 +325,10 @@ app.post('/api/test/inject-email', async (req, res) => {
         ? `[Simulación Local] Correo analizado de ${sender}. Resumen: Se encontró solicitud relacionada a empleo. Categoría determinada como ${translateCategory(category, 'es')}.`
         : `[Local Demo Mock] Analyzed email from ${sender}. Summary: Found job related request. Category determined as ${category}.`;
 
-      const result = { isPriority, category, urgency, summary };
+      const priorityCategories = config?.priorityCategories || ['Interview', 'Job Offer'];
+      const finalIsPriority = priorityCategories.includes(category);
+
+      const result = { isPriority: finalIsPriority, category, urgency, summary };
       const mailLog: MailLog = {
         id: Math.random().toString(36).substring(7),
         timestamp: new Date().toLocaleTimeString(),
@@ -466,6 +478,10 @@ async function restartServices() {
 
       result = { isPriority, category, urgency, summary };
     }
+
+    // Override isPriority dynamically based on the configured priorityCategories
+    const priorityCategories = config?.priorityCategories || ['Interview', 'Job Offer'];
+    result.isPriority = priorityCategories.includes(result.category);
 
     const mailLog: MailLog = {
       id: Math.random().toString(36).substring(7),
