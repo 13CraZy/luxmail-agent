@@ -90,3 +90,6 @@ Thumbs.db
 # WhatsApp Web Session Cache (critical to ignore, to avoid committing credentials!)
 .wwebjs_auth/
 .wwebjs_cache/
+
+# Local configuration data
+data/

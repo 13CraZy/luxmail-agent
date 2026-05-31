@@ -23,6 +23,7 @@ export interface AgentConfig {
   telegramTokenHex?: string;
   telegramChatId?: string;
   urgencyThreshold: 'low' | 'medium' | 'high';
+  language?: 'en' | 'es';
 }
 
 export interface SystemStatus {

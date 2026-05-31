@@ -4,9 +4,31 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { ImapService } from './services/imapService';
-import { AIService } from './services/aiService';
+import { AIService, ClassificationResult } from './services/aiService';
 import { WhatsappService } from './services/whatsappService';
 import { AgentConfig, SystemStatus, MailLog, ConsoleLog } from '../shared/types';
+
+function translateCategory(category: string, lang: 'en' | 'es'): string {
+  if (lang !== 'es') return category;
+  const mapping: Record<string, string> = {
+    'Interview': 'Entrevista',
+    'Job Offer': 'Oferta de Trabajo',
+    'Reject': 'Rechazo',
+    'Spam': 'Spam',
+    'General': 'General'
+  };
+  return mapping[category] || category;
+}
+
+function translateUrgency(urgency: string, lang: 'en' | 'es'): string {
+  if (lang !== 'es') return urgency;
+  const mapping: Record<string, string> = {
+    'low': 'baja',
+    'medium': 'media',
+    'high': 'alta'
+  };
+  return mapping[urgency] || urgency;
+}
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.resolve('./data');
@@ -99,6 +121,14 @@ app.get('/api/status', (_req, res) => {
   res.json({ status: getSystemStatus(), configExists: config !== null });
 });
 
+app.get('/api/config', (_req, res) => {
+  if (config) {
+    res.json(config);
+  } else {
+    res.status(404).json({ error: 'No configuration found' });
+  }
+});
+
 app.post('/api/config', (req, res) => {
   config = req.body as AgentConfig;
   try {
@@ -135,7 +165,7 @@ app.post('/api/test/inject-email', async (req, res) => {
     // Dry run if IMAP is offline but AI is configured
     if (aiService) {
       addConsoleLog('warn', '[SIMULATION] IMAP monitor offline. Executing AI classification dry run.');
-      const result = await aiService.classifyEmail(sender, subject, body);
+      const result = await aiService.classifyEmail(sender, subject, body, config?.language || 'en');
       
       const mailLog: MailLog = {
         id: Math.random().toString(36).substring(7),
@@ -166,7 +196,10 @@ app.post('/api/test/inject-email', async (req, res) => {
                      : (subject.toLowerCase().includes('discount') || subject.toLowerCase().includes('promo')) ? 'Spam'
                      : 'General';
       const urgency: 'low' | 'medium' | 'high' = isPriority ? 'high' : 'low';
-      const summary = `[Local Demo Mock] Analyzed email from ${sender}. Summary: Found job related request. Category determined as ${category}.`;
+      const isSpanish = config?.language === 'es';
+      const summary = isSpanish
+        ? `[Simulación Local] Correo analizado de ${sender}. Resumen: Se encontró solicitud relacionada a empleo. Categoría determinada como ${translateCategory(category, 'es')}.`
+        : `[Local Demo Mock] Analyzed email from ${sender}. Summary: Found job related request. Category determined as ${category}.`;
 
       const result = { isPriority, category, urgency, summary };
       const mailLog: MailLog = {
@@ -201,10 +234,17 @@ async function restartServices() {
   }
 
   if (!config) return;
+  const currentLanguage = config.language || 'en';
 
   // 2. Initialize AI Engine
-  aiService = new AIService(config.ai);
-  addConsoleLog('success', `AI Engine initialized using provider: ${config.ai.provider.toUpperCase()}`);
+  const hasValidApiKey = config.ai.apiKeyHex && !config.ai.apiKeyHex.startsWith('test') && !config.ai.apiKeyHex.includes('••••');
+  if (hasValidApiKey) {
+    aiService = new AIService(config.ai);
+    addConsoleLog('success', `AI Engine initialized using provider: ${config.ai.provider.toUpperCase()}`);
+  } else {
+    aiService = null;
+    addConsoleLog('warn', `AI Engine skipped: No valid API key provided. Fallback mock classifier will be active.`);
+  }
 
   // 3. Initialize WhatsApp Automation
   if (config.whatsappEnabled) {
@@ -226,11 +266,28 @@ async function restartServices() {
   imapService.onNewEmail(async (email) => {
     addConsoleLog('info', `New email detected from: ${email.sender}. Topic: "${email.subject}"`);
     
-    if (!aiService) return;
+    let result: ClassificationResult;
 
-    addConsoleLog('info', 'Analyzing email priority with AI...');
-    const result = await aiService.classifyEmail(email.sender, email.subject, email.body);
-    
+    if (aiService) {
+      addConsoleLog('info', 'Analyzing email priority with AI...');
+      result = await aiService.classifyEmail(email.sender, email.subject, email.body, currentLanguage);
+    } else {
+      addConsoleLog('warn', 'AI Engine offline. Running local mock rule-based classifier.');
+      const isPriority = email.subject.toLowerCase().includes('interview') || email.subject.toLowerCase().includes('schedule');
+      const category: 'Interview' | 'Job Offer' | 'Reject' | 'Spam' | 'General' = isPriority ? 'Interview' 
+                     : (email.subject.toLowerCase().includes('rejection') || email.body.toLowerCase().includes('proceed with another')) ? 'Reject'
+                     : (email.subject.toLowerCase().includes('offer') || email.body.toLowerCase().includes('job offer')) ? 'Job Offer'
+                     : (email.subject.toLowerCase().includes('discount') || email.subject.toLowerCase().includes('promo')) ? 'Spam'
+                     : 'General';
+      const urgency: 'low' | 'medium' | 'high' = isPriority ? 'high' : 'low';
+      const isSpanish = currentLanguage === 'es';
+      const summary = isSpanish
+        ? `[Simulación Local] Correo analizado de ${email.sender}. Resumen: Se encontró solicitud relacionada a empleo. Categoría determinada como ${translateCategory(category, 'es')}.`
+        : `[Local Demo Mock] Analyzed email from ${email.sender}. Summary: Found job related request. Category determined as ${category}.`;
+
+      result = { isPriority, category, urgency, summary };
+    }
+
     const mailLog: MailLog = {
       id: Math.random().toString(36).substring(7),
       timestamp: new Date().toLocaleTimeString(),
@@ -246,7 +303,10 @@ async function restartServices() {
 
     // Forward WhatsApp alerts if email meets priority threshold
     if (result.isPriority && config?.whatsappEnabled && whatsappService) {
-      const alertMessage = `📬 *LuxMail Alert*\n\n*From:* ${email.sender}\n*Subject:* ${email.subject}\n*Summary:* ${result.summary}\n\n_Classification: ${result.category} (${result.urgency} priority)_`;
+      const isSpanish = currentLanguage === 'es';
+      const alertMessage = isSpanish
+        ? `📬 *Alerta de LuxMail*\n\n*De:* ${email.sender}\n*Asunto:* ${email.subject}\n*Resumen:* ${result.summary}\n\n_Clasificación: ${translateCategory(result.category, 'es')} (prioridad ${translateUrgency(result.urgency, 'es')})_`
+        : `📬 *LuxMail Alert*\n\n*From:* ${email.sender}\n*Subject:* ${email.subject}\n*Summary:* ${result.summary}\n\n_Classification: ${result.category} (${result.urgency} priority)_`;
       try {
         // Send to self (using registered phone number from config or environment)
         const targetPhone = process.env.NOTIFICATION_PHONE || config.imap.user; 

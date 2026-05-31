@@ -33,7 +33,8 @@ export class AIService {
     }
   }
 
-  public async classifyEmail(sender: string, subject: string, body: string): Promise<ClassificationResult> {
+  public async classifyEmail(sender: string, subject: string, body: string, language: 'en' | 'es' = 'en'): Promise<ClassificationResult> {
+    const summaryLanguage = language === 'es' ? 'Spanish' : 'English';
     const prompt = `
 You are an advanced email classification agent. Analyze the following email details and classify them.
 SENDER: ${sender}
@@ -45,7 +46,7 @@ Return a JSON object matching this schema:
   "isPriority": boolean (true if it is a job interview invitation, job offer, technical test request, or direct follow-up from a recruiter),
   "category": "Interview" | "Job Offer" | "Reject" | "Spam" | "General",
   "urgency": "low" | "medium" | "high",
-  "summary": "string (brief summary in Spanish of what the email says and any action items)"
+  "summary": "string (brief summary in ${summaryLanguage} of what the email says and any action items)"
 }
 `;
 
