@@ -25,7 +25,7 @@ function createWindow() {
 
   if (isDev) {
     // Load Vite development server
-    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5172');
     mainWindow.webContents.openDevTools();
   } else {
     // Load production HTML compiled by Vite

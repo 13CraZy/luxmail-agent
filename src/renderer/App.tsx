@@ -29,8 +29,9 @@ export default function App() {
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-resolve API and WS URLs for development and production containers
-  const apiBase = window.location.port === '5173' ? 'http://localhost:3000' : '';
-  const wsHost = window.location.port === '5173' ? 'localhost:3000' : window.location.host;
+  const isDevPort = window.location.port === '5172' || window.location.port === '5173';
+  const apiBase = isDevPort ? 'http://localhost:3000' : '';
+  const wsHost = isDevPort ? 'localhost:3000' : window.location.host;
 
   // Auto-scroll terminal to bottom
   useEffect(() => {
