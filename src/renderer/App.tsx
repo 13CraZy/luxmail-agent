@@ -470,10 +470,10 @@ export default function App() {
                 disabled={isSaving || !isConfigValid}
                 className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all select-none flex items-center justify-center gap-1.5 ${
                   !isConfigValid
-                    ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-card-border opacity-40'
+                    ? 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-card-border'
                     : showSavedCheck 
                       ? 'bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] border border-emerald-400/20' 
-                      : 'bg-foreground text-background hover:bg-neutral-200'
+                      : 'bg-white text-black hover:bg-neutral-200'
                 }`}
               >
                 {isSaving && <RefreshCw size={12} className="animate-spin" />}
