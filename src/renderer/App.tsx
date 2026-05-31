@@ -102,6 +102,7 @@ export default function App() {
   const [aiKey, setAiKey] = useState('');
   const [whatsappEnabled, setWhatsappEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [showSavedCheck, setShowSavedCheck] = useState(false);
   
   // System & Connection State
   const [status, setStatus] = useState<SystemStatus>({
@@ -266,6 +267,8 @@ export default function App() {
       const result = await response.json();
       if (result.success) {
         addConsoleLog('success', language === 'es' ? 'Configuración guardada e iniciada.' : 'Configuration updated successfully.');
+        setShowSavedCheck(true);
+        setTimeout(() => setShowSavedCheck(false), 2000);
       } else {
         addConsoleLog('error', language === 'es' ? 'El daemon rechazó la configuración.' : 'Configuration rejected by daemon.');
       }
@@ -458,10 +461,20 @@ export default function App() {
               <button
                 onClick={handleSaveConfig}
                 disabled={isSaving}
-                className="w-full py-2.5 rounded-xl bg-foreground text-background text-xs font-bold hover:bg-neutral-200 transition-all select-none disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all select-none disabled:opacity-50 flex items-center justify-center gap-1.5 ${
+                  showSavedCheck 
+                    ? 'bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] border border-emerald-400/20' 
+                    : 'bg-foreground text-background hover:bg-neutral-200'
+                }`}
               >
                 {isSaving && <RefreshCw size={12} className="animate-spin" />}
-                {isSaving ? t('applyingBtn') : t('applyBtn')}
+                {showSavedCheck && <CheckCircle size={12} className="text-white" />}
+                {isSaving 
+                  ? t('applyingBtn') 
+                  : showSavedCheck 
+                    ? (language === 'es' ? '¡Guardado!' : 'Saved!') 
+                    : t('applyBtn')
+                }
               </button>
             </div>
           ) : (
