@@ -11,6 +11,8 @@
     "build:main": "tsc -p src/main",
     "build": "npm run build:renderer && npm run build:main",
     "start:service": "node dist/main/main/service.js",
+    "dist": "electron-builder",
+    "package": "npm run build && electron-builder",
     "lint": "eslint src --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "prepare": "husky"
@@ -72,5 +74,25 @@
     "zero-trust"
   ],
   "author": "Felix Iniguez",
-  "license": "MIT"
+  "license": "MIT",
+  "build": {
+    "appId": "com.luxnode.luxmail-agent",
+    "productName": "LuxMail Agent",
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "LuxMail Agent"
+    }
+  }
 }
