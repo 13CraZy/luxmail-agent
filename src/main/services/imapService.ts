@@ -3,8 +3,13 @@ import { IMAPConfig } from '../../shared/types';
 
 export class ImapService {
   private client: ImapFlow | null = null;
-  private isConnected = false;
+  private connectionStatus: 'connected' | 'disconnected' | 'reconnecting' = 'disconnected';
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private retryDelay = 5000;
+  private explicitlyDisconnected = false;
+
   public onNewEmailCallback: ((email: { sender: string; subject: string; body: string; date: Date }) => void) | null = null;
+  public onStatusChangeCallback: ((status: 'connected' | 'disconnected' | 'reconnecting') => void) | null = null;
 
   constructor(private config: IMAPConfig) {}
 
@@ -12,12 +17,23 @@ export class ImapService {
     this.onNewEmailCallback = callback;
   }
 
-  public getStatus(): boolean {
-    return this.isConnected;
+  public onStatusChange(callback: (status: 'connected' | 'disconnected' | 'reconnecting') => void) {
+    this.onStatusChangeCallback = callback;
+  }
+
+  public getStatus(): 'connected' | 'disconnected' | 'reconnecting' {
+    return this.connectionStatus;
   }
 
   public async connect(): Promise<void> {
-    if (this.isConnected) return;
+    if (this.connectionStatus === 'connected') return;
+
+    this.explicitlyDisconnected = false;
+    await this.attemptConnect();
+  }
+
+  private async attemptConnect(): Promise<void> {
+    if (this.explicitlyDisconnected) return;
 
     let finalPassword = this.config.passwordHex.trim();
     // If it is a 16-character Google App Password (often displayed with spaces), strip all spaces
@@ -36,21 +52,85 @@ export class ImapService {
       logger: false, // Suppress verbose library logs
     });
 
-    await this.client.connect();
-    this.isConnected = true;
-    
-    // Open the INBOX in read-only mode by default for safety
-    await this.client.mailboxOpen('INBOX', { readOnly: true });
-    
-    // Begin listening for new emails
-    this.startListening();
+    this.client.on('error', (err) => {
+      console.error('IMAP client connection error:', err);
+      this.triggerReconnect();
+    });
+
+    this.client.on('close', () => {
+      console.log('IMAP client closed.');
+      this.triggerReconnect();
+    });
+
+    try {
+      await this.client.connect();
+      this.connectionStatus = 'connected';
+      this.retryDelay = 5000; // Reset delay on success
+      if (this.onStatusChangeCallback) {
+        this.onStatusChangeCallback('connected');
+      }
+
+      // Open the INBOX in read-only mode by default for safety
+      await this.client.mailboxOpen('INBOX', { readOnly: true });
+      
+      // Begin listening for new emails
+      this.startListening();
+    } catch (err) {
+      console.error('IMAP connection attempt failed:', err);
+      this.triggerReconnect();
+      throw err; // Propagate for initial connection setup
+    }
+  }
+
+  private triggerReconnect() {
+    if (this.explicitlyDisconnected) return;
+    if (this.connectionStatus === 'reconnecting') return;
+
+    this.connectionStatus = 'reconnecting';
+    if (this.onStatusChangeCallback) {
+      this.onStatusChangeCallback('reconnecting');
+    }
+
+    if (this.client) {
+      try {
+        this.client.logout().catch(() => {});
+      } catch (e) {}
+      this.client = null;
+    }
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    console.log(`Scheduling IMAP reconnect in ${this.retryDelay}ms...`);
+    this.reconnectTimeout = setTimeout(async () => {
+      try {
+        await this.attemptConnect();
+      } catch (err) {
+        // Exponential backoff up to 60s
+        this.retryDelay = Math.min(this.retryDelay * 2, 60000);
+      }
+    }, this.retryDelay);
   }
 
   public async disconnect(): Promise<void> {
-    if (!this.client || !this.isConnected) return;
-    await this.client.logout();
-    this.isConnected = false;
-    this.client = null;
+    this.explicitlyDisconnected = true;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    this.connectionStatus = 'disconnected';
+    if (this.onStatusChangeCallback) {
+      this.onStatusChangeCallback('disconnected');
+    }
+
+    if (this.client) {
+      try {
+        await this.client.logout();
+      } catch (e) {}
+      this.client = null;
+    }
   }
 
   public async searchEmails(criteria: {
@@ -61,7 +141,7 @@ export class ImapService {
     body?: string;
     keywords?: string[];
   }): Promise<{ sender: string; subject: string; date: string; bodySummary: string }[]> {
-    if (!this.client || !this.isConnected) {
+    if (!this.client || this.connectionStatus !== 'connected') {
       throw new Error('IMAP monitor is offline. Please check your credentials and retry.');
     }
 
@@ -153,7 +233,7 @@ export class ImapService {
     });
 
     // Enter idle state to listen for real-time events
-    while (this.isConnected && this.client) {
+    while (this.connectionStatus === 'connected' && this.client) {
       await this.client.idle();
     }
   }

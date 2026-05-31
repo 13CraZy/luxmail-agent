@@ -468,10 +468,12 @@ export default function App() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.imapConnected ? 'bg-emerald-400' : 'bg-rose-400'} opacity-75`} />
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${status.imapConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${status.imapConnected === true ? 'bg-emerald-400' : status.imapConnected === 'reconnecting' ? 'bg-amber-400' : 'bg-rose-400'} opacity-75`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${status.imapConnected === true ? 'bg-emerald-500' : status.imapConnected === 'reconnecting' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'}`} />
             </span>
-            <span className="text-[10px] font-mono text-muted select-none uppercase">{t('imapBadge')}</span>
+            <span className="text-[10px] font-mono text-muted select-none uppercase">
+              {status.imapConnected === 'reconnecting' ? (language === 'es' ? 'IMAP RECONECTANDO' : 'IMAP RECONNECTING') : t('imapBadge')}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">

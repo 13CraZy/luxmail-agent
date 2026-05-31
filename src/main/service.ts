@@ -111,8 +111,9 @@ function addConsoleLog(level: ConsoleLog['level'], message: string) {
 }
 
 function getSystemStatus(): SystemStatus {
+  const imapStatus = imapService?.getStatus() || 'disconnected';
   return {
-    imapConnected: imapService?.getStatus() || false,
+    imapConnected: imapStatus === 'connected' ? true : imapStatus === 'reconnecting' ? 'reconnecting' : false,
     whatsappConnected: whatsappService?.getStatus() || false,
     aiConnected: aiService !== null,
   };
@@ -381,6 +382,10 @@ async function restartServices() {
 
   // 4. Initialize IMAP Mail Monitor
   imapService = new ImapService(config.imap);
+  imapService.onStatusChange((status) => {
+    addConsoleLog('info', `IMAP connection status: ${status.toUpperCase()}`);
+    broadcast({ type: 'status', status: getSystemStatus() });
+  });
   imapService.onNewEmail(async (email) => {
     addConsoleLog('info', `New email detected from: ${email.sender}. Topic: "${email.subject}"`);
     

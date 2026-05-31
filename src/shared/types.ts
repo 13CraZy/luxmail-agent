@@ -30,7 +30,7 @@ export interface AgentConfig {
 }
 
 export interface SystemStatus {
-  imapConnected: boolean;
+  imapConnected: boolean | 'reconnecting';
   whatsappConnected: boolean;
   aiConnected: boolean;
 }
