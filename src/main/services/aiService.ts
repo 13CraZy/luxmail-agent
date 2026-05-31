@@ -130,18 +130,7 @@ Return a JSON object matching this schema:
                      : 'General';
       const urgency: 'low' | 'medium' | 'high' = isPriority ? 'high' : 'low';
       
-      const isSpanish = language === 'es';
-      const mapping: Record<string, string> = {
-        'Interview': 'Entrevista',
-        'Job Offer': 'Oferta de Trabajo',
-        'Reject': 'Rechazo',
-        'Spam': 'Spam',
-        'General': 'General'
-      };
-      const categoryText = isSpanish ? (mapping[category] || category) : category;
-      const summary = isSpanish
-        ? `[Respaldo de Emergencia] Analizado localmente. Categoría: ${categoryText}. Remitente: ${sender}.`
-        : `[Emergency Fallback] Analyzed locally. Category: ${category}. Sender: ${sender}.`;
+      const summary = extractImportantInfoLocally(subject, body, sender, language);
 
       return {
         isPriority,
@@ -364,4 +353,73 @@ Write your response in ${targetLang}. Be highly professional, direct, and concis
         : 'Sorry, I could not process your chat request right now due to a temporary quota limit or AI error. Please try again.';
     }
   }
+}
+
+export function extractImportantInfoLocally(subject: string, body: string, sender: string, language: 'en' | 'es'): string {
+  const isSpanish = language === 'es';
+  const lines: string[] = [];
+
+  // 1. Detect platform meeting links (protocol is optional to match raw domain inputs)
+  const meetingRegex = /(?:https?:\/\/)?(?:[a-zA-Z0-9-]+\.)*(?:zoom\.us|meet\.google\.com|calendly\.com|teams\.microsoft\.(?:com|live))[^\s"'<>]*/gi;
+  const meetingLinks = body.match(meetingRegex);
+  if (meetingLinks && meetingLinks.length > 0) {
+    const uniqueLinks = Array.from(new Set(meetingLinks)).slice(0, 2);
+    lines.push(isSpanish 
+      ? `🔗 Reunión: ${uniqueLinks.join(', ')}` 
+      : `🔗 Meet/Zoom Link: ${uniqueLinks.join(', ')}`
+    );
+  }
+
+  // 2. Detect dates/times in text
+  const dayRegex = /\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|ma[nñ]ana|today|hoy)\b/gi;
+  const timeRegex = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM|hrs|horas|hs)\b/gi;
+  
+  const foundDays = body.match(dayRegex);
+  const foundTimes = body.match(timeRegex);
+  
+  let dateText = '';
+  if (foundDays) {
+    const uniqueDays = Array.from(new Set(foundDays)).slice(0, 2);
+    dateText += uniqueDays.join(', ');
+  }
+  if (foundTimes) {
+    const uniqueTimes = Array.from(new Set(foundTimes)).slice(0, 2);
+    dateText += (dateText ? ' a las ' : '') + uniqueTimes.join(', ');
+  }
+  if (dateText) {
+    lines.push(isSpanish 
+      ? `📅 Horarios: ${dateText}` 
+      : `📅 Schedules: ${dateText}`
+    );
+  }
+
+  // 3. Detect salary/currency mentions (supports prefix symbols or suffix codes + frequency)
+  const salaryRegex = /(?:(?:\$|€|£|¥)\s*\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+(?:,\d{3})*(?:\.\d{2})?\s*(?:USD|MXN|EUR|GBP|dollars?|pesos?|euros?)\b)(?:\s*(?:\/mes|\/año|\/hr|monthly|annually|yearly|\/month|\/year))?/gi;
+  const salaries = body.match(salaryRegex);
+  if (salaries && salaries.length > 0) {
+    const uniqueSalaries = Array.from(new Set(salaries)).slice(0, 2);
+    lines.push(isSpanish 
+      ? `💰 Compensación: ${uniqueSalaries.join(', ')}` 
+      : `💰 Salary/Comp: ${uniqueSalaries.join(', ')}`
+    );
+  }
+
+  // 4. Create a clean message body preview
+  const cleanBody = body
+    .replace(/https?:\/\/[^\s]+/g, '[Enlace]')
+    .trim()
+    .replace(/\s+/g, ' ');
+  
+  const previewLength = 150;
+  const preview = cleanBody.substring(0, previewLength) + (cleanBody.length > previewLength ? '...' : '');
+  
+  if (preview) {
+    lines.push(isSpanish ? `📝 Resumen: ${preview}` : `📝 Preview: ${preview}`);
+  }
+
+  if (lines.length > 0) {
+    return lines.join('\n');
+  }
+
+  return isSpanish ? '(Sin información clave extraída)' : '(No key information extracted)';
 }

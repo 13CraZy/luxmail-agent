@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Mail, Cpu, Terminal, CheckCircle, Wifi, RefreshCw, Globe, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Mail, Cpu, Terminal, CheckCircle, Wifi, RefreshCw, Globe, ChevronDown, ChevronUp, Trash2, ExternalLink } from 'lucide-react';
 import { AgentConfig, SystemStatus, MailLog, ConsoleLog, AIProvider } from '../shared/types';
 
 const translations = {
@@ -537,6 +537,37 @@ export default function App() {
       }]);
     } finally {
       setIsChatSending(false);
+    }
+  };
+
+  const handleOpenEmail = async (email: MailLog) => {
+    const match = email.sender.match(/<([^>]+)>/);
+    const emailAddr = match ? match[1] : email.sender;
+    
+    let url = '';
+    const hostLower = imapHost.toLowerCase();
+    const userLower = imapUser.toLowerCase();
+    
+    const isGmail = hostLower.includes('gmail') || userLower.endsWith('@gmail.com');
+    const isOutlook = hostLower.includes('outlook') || hostLower.includes('office365') || hostLower.includes('hotmail') || 
+                      userLower.endsWith('@outlook.com') || userLower.endsWith('@hotmail.com') || userLower.endsWith('@live.com');
+    
+    if (isGmail) {
+      url = `https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(emailAddr)}+subject%3A%22${encodeURIComponent(email.subject)}%22`;
+    } else if (isOutlook) {
+      url = `https://outlook.live.com/mail/0/deeplink/search?q=from:${encodeURIComponent(emailAddr)}+subject:%22${encodeURIComponent(email.subject)}%22`;
+    } else {
+      url = `https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent(emailAddr)}+subject%3A%22${encodeURIComponent(email.subject)}%22`;
+    }
+
+    try {
+      await fetch(`${apiBase}/api/open-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+    } catch (err) {
+      console.error('Error opening email in browser:', err);
     }
   };
 
@@ -1218,7 +1249,8 @@ export default function App() {
                       return (
                         <div
                           key={email.id}
-                          className={`p-4 rounded-2xl border ${style.border} ${style.bg} flex flex-col gap-2.5 transition-all duration-300`}
+                          onClick={() => handleOpenEmail(email)}
+                          className={`p-4 rounded-2xl border ${style.border} ${style.bg} flex flex-col gap-2.5 hover:bg-white/[0.02] active:scale-[0.99] cursor-pointer transition-all duration-300 relative group`}
                         >
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1227,21 +1259,27 @@ export default function App() {
                               </span>
                               <span className="text-[10px] text-zinc-500 font-mono">{email.timestamp}</span>
                             </div>
-                            {email.notified ? (
-                              <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
-                                {t('forwardedToWa')}
-                              </span>
-                            ) : (
-                              <span className="text-[9px] text-zinc-500 font-medium bg-zinc-900/50 border border-zinc-800/50 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
-                                {t('noAlertsSent')}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {email.notified ? (
+                                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
+                                  {t('forwardedToWa')}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-zinc-500 font-medium bg-zinc-900/50 border border-zinc-800/50 px-2 py-0.5 rounded-lg flex items-center gap-1 select-none">
+                                  {t('noAlertsSent')}
+                                </span>
+                              )}
+                              <ExternalLink size={12} className="text-zinc-500 group-hover:text-zinc-300 transition-colors shrink-0" />
+                            </div>
                           </div>
                           <div className="flex flex-col gap-0.5">
                             <h4 className="text-xs font-bold text-white">{email.subject}</h4>
-                            <p className="text-[10px] text-zinc-500 font-mono select-all">FROM: {email.sender}</p>
+                            <p className="text-[10px] text-zinc-500 font-mono select-all" onClick={(e) => e.stopPropagation()}>FROM: {email.sender}</p>
                           </div>
-                          <p className={`text-[10px] leading-relaxed select-text bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl ${style.text}`}>
+                          <p 
+                            className={`text-[10px] leading-relaxed select-text bg-zinc-950/40 border border-zinc-900/80 p-3 rounded-xl whitespace-pre-line ${style.text}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {email.summary}
                           </p>
                         </div>

@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { ImapService } from './services/imapService';
-import { AIService, ClassificationResult } from './services/aiService';
+import { AIService, ClassificationResult, extractImportantInfoLocally } from './services/aiService';
 import { WhatsappService } from './services/whatsappService';
 import { AgentConfig, SystemStatus, MailLog, ConsoleLog } from '../shared/types';
 
@@ -50,6 +50,18 @@ function isCurrentlyInDndRange(startStr: string | undefined, endStr: string | un
   } else {
     return currentMinutesTotal >= startMinutesTotal || currentMinutesTotal <= endMinutesTotal;
   }
+}
+
+function isPriorityCandidate(sender: string, subject: string, body: string): boolean {
+  const textToSearch = `${sender} ${subject} ${body}`.toLowerCase();
+  const keywords = [
+    'interview', 'schedule', 'zoom', 'calendly', 'meet', 'call', 'reject', 'offer', 'job', 'recruiter',
+    'technical test', 'assessment', 'hackerrank', 'codility', 'hiring', 'application',
+    'entrevista', 'reunion', 'reunión', 'llamada', 'cita', 'calendario', 'rechazo', 'oferta', 'propuesta',
+    'vacante', 'puesto', 'empleo', 'trabajo', 'reclutador', 'reclutamiento', 'prueba tecnica', 'prueba técnica',
+    'evaluacion', 'evaluación', 'postulacion', 'postulación'
+  ];
+  return keywords.some(keyword => textToSearch.includes(keyword));
 }
 
 const PORT = process.env.PORT || 3000;
@@ -192,6 +204,28 @@ app.get('/api/logs', (_req, res) => {
 app.post('/api/logs/clear', (_req, res) => {
   consoleLogs.length = 0;
   addConsoleLog('success', 'Console logs cleared.');
+  res.json({ success: true });
+});
+
+app.post('/api/open-link', (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'Missing url in request body.' });
+  }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return res.status(400).json({ error: 'Invalid URL scheme.' });
+  }
+  
+  const startCommand = process.platform === 'win32' ? 'start ""' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const escapedUrl = url.replace(/"/g, '\\"');
+  
+  addConsoleLog('info', `Opening external URL: ${url}`);
+  exec(`${startCommand} "${escapedUrl}"`, (err) => {
+    if (err) {
+      addConsoleLog('error', `Failed to open URL: ${err.message}`);
+    }
+  });
+  
   res.json({ success: true });
 });
 
@@ -466,11 +500,18 @@ async function restartServices() {
   ) {
     let result: ClassificationResult;
 
-    if (aiService) {
-      addConsoleLog('info', `Analyzing email: "${email.subject}"`);
+    const isCandidate = isPriorityCandidate(email.sender, email.subject, email.body);
+
+    if (aiService && isCandidate) {
+      addConsoleLog('info', `Analyzing email with AI: "${email.subject}"`);
       result = await aiService.classifyEmail(email.sender, email.subject, email.body, currentLanguage);
     } else {
-      addConsoleLog('warn', 'AI Engine offline. Running local mock rule-based classifier.');
+      if (aiService && !isCandidate) {
+        addConsoleLog('info', `Bypassing AI classification (non-priority candidate): "${email.subject}"`);
+      } else {
+        addConsoleLog('warn', 'AI Engine offline. Running local mock rule-based classifier.');
+      }
+      
       const isPriority = email.subject.toLowerCase().includes('interview') || email.subject.toLowerCase().includes('schedule');
       const category: 'Interview' | 'Job Offer' | 'Reject' | 'Spam' | 'General' = isPriority ? 'Interview' 
                      : (email.subject.toLowerCase().includes('rejection') || email.body.toLowerCase().includes('proceed with another')) ? 'Reject'
@@ -478,10 +519,7 @@ async function restartServices() {
                      : (email.subject.toLowerCase().includes('discount') || email.subject.toLowerCase().includes('promo')) ? 'Spam'
                      : 'General';
       const urgency: 'low' | 'medium' | 'high' = isPriority ? 'high' : 'low';
-      const isSpanish = currentLanguage === 'es';
-      const summary = isSpanish
-        ? `[Simulación Local] Correo analizado de ${email.sender}. Resumen: Se encontró solicitud relacionada a empleo. Categoría determinada como ${translateCategory(category, 'es')}.`
-        : `[Local Demo Mock] Analyzed email from ${email.sender}. Summary: Found job related request. Category determined as ${category}.`;
+      const summary = extractImportantInfoLocally(email.subject, email.body, email.sender, currentLanguage);
 
       result = { isPriority, category, urgency, summary };
     }
