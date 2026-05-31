@@ -328,7 +328,7 @@ export default function App() {
       {/* 2. Main Workspace */}
       <main className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         {/* Left Side Pane: Navigation & Configurations */}
-        <div className="w-full md:w-[320px] shrink-0 border-b md:border-b-0 md:border-r border-card-border bg-[#050508] p-5 flex flex-col gap-4 overflow-y-visible md:overflow-y-auto">
+        <div className="w-full md:w-[320px] shrink-0 border-b md:border-b-0 md:border-r border-card-border bg-[#050508] p-5 pb-8 flex flex-col gap-4 overflow-y-auto h-auto md:h-full min-h-0">
           {/* Tab Selection */}
           <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-[rgba(255,255,255,0.03)] border border-card-border">
             <button
@@ -346,7 +346,7 @@ export default function App() {
           </div>
 
           {activeTab === 'settings' ? (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 pb-8">
               {/* Language Selector */}
               <div className="p-4 rounded-2xl bg-card border border-card-border flex flex-col gap-3">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-accent-amber select-none">
@@ -373,18 +373,18 @@ export default function App() {
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-[9px] font-mono tracking-widest text-muted uppercase">{t('hostPort')}</label>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 w-full">
                     <input
                       type="text"
                       value={imapHost}
                       onChange={e => setImapHost(e.target.value)}
-                      className="flex-1 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
+                      className="flex-1 min-w-0 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-accent-purple"
                     />
                     <input
                       type="number"
                       value={imapPort}
                       onChange={e => setImapPort(Number(e.target.value))}
-                      className="w-16 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2 py-1.5 text-xs text-white text-center focus:outline-none focus:border-accent-purple"
+                      className="w-16 shrink-0 bg-[rgba(255,255,255,0.02)] border border-card-border rounded-lg px-2 py-1.5 text-xs text-white text-center focus:outline-none focus:border-accent-purple"
                     />
                   </div>
                 </div>
@@ -490,13 +490,11 @@ export default function App() {
 
                 {qrCode ? (
                   <div className="bg-white p-3.5 rounded-xl flex items-center justify-center shadow-lg my-1 select-none">
-                    {/* Simulated visual QR box */}
-                    <div className="h-40 w-40 bg-zinc-100 border border-zinc-200 flex flex-col items-center justify-center p-2 rounded-lg gap-2 text-black">
-                      <span className="font-bold text-xs tracking-tighter text-center">{t('scanQr')}</span>
-                      <div className="h-24 w-24 border-4 border-black border-dashed flex items-center justify-center">
-                        <RefreshCw size={24} className="animate-spin text-zinc-400" />
-                      </div>
-                    </div>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=050508&data=${encodeURIComponent(qrCode)}`}
+                      alt="WhatsApp Web QR Code"
+                      className="h-40 w-40"
+                    />
                   </div>
                 ) : (
                   <div className="h-44 w-full rounded-xl bg-[rgba(255,255,255,0.01)] border border-dashed border-card-border flex flex-col items-center justify-center text-center p-4">
